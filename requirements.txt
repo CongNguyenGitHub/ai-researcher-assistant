@@ -2,8 +2,11 @@
 crewai==0.35.0
 crewai-tools==0.1.0
 
-# LLM Provider - Using Google Gemini instead of OpenAI
+# LLM Provider & Embeddings - Using Google Gemini
 google-generativeai==0.3.0
+
+# Document Processing
+tensorlake==0.1.0
 
 # Web Search
 firecrawl-python==0.2.0

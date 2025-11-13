@@ -16,13 +16,19 @@ class ConfigError(Exception):
 
 @dataclass
 class GeminiConfig:
-    """Google Gemini API configuration"""
+    """Google Gemini API configuration for LLM and embeddings"""
     api_key: str
     model: str = "gemini-2.0-flash"
+    embedding_model: str = "text-embedding-004"
+    embedding_dimensions: int = 768
 
     def __post_init__(self):
         if not self.api_key:
             raise ConfigError("GEMINI_API_KEY is required")
+        if not self.model:
+            raise ConfigError("GEMINI_MODEL is required")
+        if not self.embedding_model:
+            raise ConfigError("GEMINI_EMBEDDING_MODEL is required")
 
 
 @dataclass
@@ -35,6 +41,17 @@ class MilvusConfig:
     def __post_init__(self):
         if not self.host:
             raise ConfigError("MILVUS_HOST is required")
+
+
+@dataclass
+class TensorLakeConfig:
+    """TensorLake API configuration for document parsing"""
+    api_key: str
+    base_url: str = "https://api.tensorlake.ai"
+
+    def __post_init__(self):
+        if not self.api_key:
+            raise ConfigError("TENSORLAKE_API_KEY is required")
 
 
 @dataclass
@@ -86,6 +103,7 @@ class Config:
     firecrawl: FirecrawlConfig
     zep: ZepConfig
     arxiv: ArxivConfig
+    tensorlake: TensorLakeConfig
     app: ApplicationConfig
 
     @classmethod
@@ -98,7 +116,9 @@ class Config:
         try:
             gemini = GeminiConfig(
                 api_key=os.getenv("GEMINI_API_KEY", ""),
-                model=os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+                model=os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
+                embedding_model=os.getenv("GEMINI_EMBEDDING_MODEL", "text-embedding-004"),
+                embedding_dimensions=int(os.getenv("EMBEDDING_DIMENSIONS", "768"))
             )
         except ConfigError as e:
             raise ConfigError(f"Gemini configuration error: {e}")
@@ -117,6 +137,14 @@ class Config:
             )
         except ConfigError as e:
             raise ConfigError(f"Zep configuration error: {e}")
+
+        try:
+            tensorlake = TensorLakeConfig(
+                api_key=os.getenv("TENSORLAKE_API_KEY", ""),
+                base_url=os.getenv("TENSORLAKE_BASE_URL", "https://api.tensorlake.ai")
+            )
+        except ConfigError as e:
+            raise ConfigError(f"TensorLake configuration error: {e}")
 
         milvus = MilvusConfig(
             host=os.getenv("MILVUS_HOST", "localhost"),
@@ -144,6 +172,7 @@ class Config:
             firecrawl=firecrawl,
             zep=zep,
             arxiv=arxiv,
+            tensorlake=tensorlake,
             app=app
         )
 
@@ -172,9 +201,12 @@ if __name__ == "__main__":
         config = Config.from_env()
         print("✅ Configuration loaded successfully")
         print(f"  - Gemini Model: {config.gemini.model}")
+        print(f"  - Embedding Model: {config.gemini.embedding_model}")
+        print(f"  - Embedding Dimensions: {config.gemini.embedding_dimensions}")
         print(f"  - Milvus: {config.milvus.host}:{config.milvus.port}")
         print(f"  - Firecrawl API Key: {config.firecrawl.api_key[:10]}...")
         print(f"  - Zep URL: {config.zep.api_url}")
+        print(f"  - TensorLake Base URL: {config.tensorlake.base_url}")
         print(f"  - Quality Threshold: {config.app.quality_threshold}")
     except ConfigError as e:
         print(f"❌ Configuration error: {e}")

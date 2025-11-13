@@ -12,15 +12,17 @@ The Context-Aware Research Assistant is a crewAI-orchestrated system that accept
 ## Technical Context
 
 **Language/Version**: Python 3.10+  
-**Primary Dependencies**: crewai, crewai-tools, google-generativeai, python-dotenv, pymilvus, firecrawl-python, arxiv, zep-python, streamlit  
-**LLM Provider**: Google Gemini 2.0 Flash (replaces OpenAI GPT)  
-**Storage**: Milvus (vector database for RAG), Zep Memory (conversation/entity storage), external (Firecrawl/Arxiv APIs)  
+**Primary Dependencies**: crewai, crewai-tools, google-generativeai, python-dotenv, pymilvus, firecrawl-python, arxiv, zep-python, tensorlake, streamlit  
+**LLM Provider**: Google Gemini 2.0 Flash (response synthesis)  
+**Embedding Model**: Google Gemini Text Embeddings (text-embedding-004, 768 dimensions)  
+**Document Parser**: TensorLake API (intelligent document parsing and chunking)  
+**Storage**: Milvus (vector database for RAG with 768-dim embeddings), Zep Memory (conversation/entity storage), external (Firecrawl/Arxiv APIs)  
 **Testing**: MVP mode - no automated tests, manual testing only  
 **Target Platform**: Linux/Mac/Windows web application (Streamlit), deployable as standalone web service  
 **Project Type**: Single Python project (Streamlit web application with backend orchestration)  
 **Performance Goals**: <30 second response time per query, parallel execution across 4 sources  
 **Constraints**: <30 second total latency, graceful degradation if any single source fails, maintain context coherence across multi-turn conversations  
-**Scale/Scope**: MVP supports single-user/multi-turn conversations via web UI, designed for future scaling to multi-user with session management
+**Scale/Scope**: MVP supports single-user/multi-turn conversations via web UI with document ingestion, designed for future scaling to multi-user with session management
 
 ## Constitution Check
 
