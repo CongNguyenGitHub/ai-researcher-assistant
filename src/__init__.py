@@ -34,6 +34,8 @@ from .services import (
     Orchestrator,
     Evaluator,
     Synthesizer,
+    SearchService,
+    get_search_service,
 )
 from .tools import (
     ToolBase,
@@ -88,6 +90,8 @@ __all__ = [
     "Orchestrator",
     "Evaluator",
     "Synthesizer",
+    "SearchService",
+    "get_search_service",
     # Tools
     "ToolBase",
     "ToolResult",

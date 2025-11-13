@@ -83,10 +83,7 @@ class FirecrawlTool(ToolBase):
     
     def _extract_search_urls(self, query_text: str) -> List[str]:
         """
-        Generate search URLs for the query.
-        
-        In a real implementation, this would use Google Search API or similar.
-        For now, returns a placeholder format that could be filled by a search service.
+        Generate search URLs for the query using search service.
         
         Args:
             query_text: The search query
@@ -94,10 +91,18 @@ class FirecrawlTool(ToolBase):
         Returns:
             List of URLs to fetch
         """
-        # Placeholder: In production, use a search API
-        # For now, return empty list (would be populated by search service)
-        logger.debug(f"URL extraction requested for: {query_text}")
-        return []
+        try:
+            from services.search_service import get_search_service
+            
+            search_service = get_search_service(use_mock=True)  # MVP mode: use mock search
+            urls = search_service.search(query_text, max_results=self.max_urls)
+            
+            logger.debug(f"URL extraction for '{query_text}': found {len(urls)} URLs")
+            return urls
+            
+        except Exception as e:
+            logger.warning(f"URL extraction failed: {str(e)}")
+            return []
     
     def execute(self, query: Query) -> ToolResult:
         """
