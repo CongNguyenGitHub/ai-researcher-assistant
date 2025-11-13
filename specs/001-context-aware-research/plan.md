@@ -111,39 +111,60 @@ Phase 0 will resolve the following research areas identified from the specificat
 
 ### Research Tasks
 
+**CLARIFIED from Spec Session 2025-11-13**: The following research areas now have explicit decisions from specification clarifications and should be updated in research.md:
+
 1. **CrewAI Best Practices for Multi-Agent Orchestration**
    - Task: Research optimal crewAI patterns for parallel task execution and inter-agent communication
-   - Deliverable: research.md section on agent communication patterns and error handling
+   - Clarification: Orchestrator must handle graceful degradation when individual source fails (continue with remaining sources, log failure with timestamp)
+   - Deliverable: research.md section on agent communication patterns, error handling, and source failure logging
 
 2. **Milvus Vector Database Integration**
    - Task: Best practices for Milvus integration in Python, connection pooling, and query optimization
    - Deliverable: research.md section on Milvus setup, chunking strategy, and query patterns
 
-3. **Context Filtering and Quality Metrics**
-   - Task: Define metrics for "low-quality" context - source reputation, recency, semantic relevance
-   - Deliverable: research.md section on filtering heuristics and evaluation criteria
+3. **Context Filtering and Quality Metrics** ⭐ **CLARIFIED**
+   - Task: Define metrics for "low-quality" context filtering
+   - **Clarification Decision**: Multi-factor quality scoring formula: **30% source reputation + 20% recency + 40% semantic relevance + 10% deduplication**
+   - This scoring directly operationalizes the Evaluator agent's evaluation criteria
+   - Deliverable: research.md section detailing how each factor (reputation, recency, relevance, dedup) is computed and weighted
 
-4. **Handling Contradictory Information**
+4. **Handling Contradictory Information** ⭐ **CLARIFIED**
    - Task: Research patterns for surfacing and reconciling contradictory sources in synthesis
-   - Deliverable: research.md section on contradiction handling strategies
+   - **Clarification Decision**: When sources contradict, Synthesizer MUST:
+     - Acknowledge both perspectives with explicit source attribution
+     - Explicitly note the contradiction in the response
+     - Let the user decide which source/perspective to trust
+     - Never choose one source arbitrarily or synthesize false consensus
+   - Deliverable: research.md section on contradiction detection, dual-source citation patterns, and user-decision-making support
 
-5. **Structured Response Format Design**
-   - Task: Define JSON schema for final responses including citations, confidence scores, source attribution
-   - Deliverable: research.md with schema definition and validation rules
+5. **Structured Response Format Design** ⭐ **CLARIFIED**
+   - Task: Define JSON schema for final responses
+   - **Clarification Decision**: JSON with **three citation levels**:
+     1. Main answer text with source links (URL attribution)
+     2. Key claims as array with specific chunk citations and per-claim confidence scores (0.0-1.0)
+     3. Overall response confidence score and source availability status
+   - Includes metadata: synthesis timestamp, source count, failed/unavailable sources
+   - Deliverable: research.md with complete JSON schema definition, validation rules, and examples showing contradiction handling
 
 6. **Zep Memory Integration Patterns**
    - Task: Best practices for conversation history, entity relationship graphs, user preference storage
    - Deliverable: research.md section on memory schema and retrieval patterns
 
-7. **Error Resilience and Graceful Degradation**
-   - Task: Patterns for handling individual source failures, fallback strategies
-   - Deliverable: research.md section on resilience patterns
+7. **Error Resilience and Graceful Degradation** ⭐ **CLARIFIED**
+   - Task: Patterns for handling individual source failures and fallback strategies
+   - **Clarification Decisions**:
+     - When a single source times out/fails: continue with remaining sources (not fail-fast)
+     - Log failure with source name, timestamp, and error details
+     - Include source availability status in response (which sources contributed, which were unavailable)
+     - When ALL sources return empty: return transparent response explaining no context found, invite user to refine query or provide documents for RAG
+   - Deliverable: research.md section on resilience patterns, failure logging strategy, and no-context user guidance
 
 8. **Streamlit UI Best Practices for Research Assistant**
    - Task: Research Streamlit patterns for multi-page apps, session state management, streaming responses
-   - Deliverable: research.md section on Streamlit component patterns and caching strategies
+   - Clarification: UI must display source availability status and handle contradiction display gracefully
+   - Deliverable: research.md section on Streamlit component patterns, caching strategies, and handling of confidence scores/citations in UI
 
-**Output**: `research.md` file with all NEEDS CLARIFICATION items resolved and decision rationales documented.
+**Output**: `research.md` file with all NEEDS CLARIFICATION items resolved and decision rationales documented, including all clarified decisions from spec session.
 
 ## Phase 1: Design & Contracts
 
@@ -157,8 +178,8 @@ Extract and define all entities from feature spec:
 - **Query**: User research question with metadata (user_id, timestamp, session_id)
 - **ContextChunk**: Individual piece of context (source, text, confidence_score, relevance_score, metadata)
 - **AggregatedContext**: Collection of context chunks from all sources with source attribution
-- **FilteredContext**: High-quality subset after evaluation with filtering rationale
-- **FinalResponse**: Structured answer with citations, confidence levels, source attribution
+- **FilteredContext**: High-quality subset after evaluation using multi-factor scoring (30% reputation + 20% recency + 40% relevance + 10% dedup), includes filtering rationale for removed items
+- **FinalResponse**: Structured JSON answer with **three citation levels**: (1) main answer text with source links, (2) key claims array with per-claim confidence scores and chunk citations, (3) overall response confidence and source availability status. Includes metadata (timestamp, source count, failed sources). Handles contradictions by documenting conflicting claims with dual-source attribution.
 - **ConversationHistory**: Prior interactions, extracted insights, session context
 - **UserPreferences**: Response format preferences, information depth, source preferences, topic interests
 - **Entity**: Named concepts with relationships for knowledge graph
@@ -171,8 +192,10 @@ Query → [Parallel Retrieval] → AggregatedContext → [Evaluation] → Filter
 **Validation Rules**:
 - Query text must be non-empty, <5000 characters
 - Context chunks must have source attribution and confidence scores (0-1)
-- Filtered context must have filtering rationale for removed items
-- Final response must cite sources and include confidence levels
+- Filtered context must have filtering rationale and quality scores based on formula (30% reputation + 20% recency + 40% relevance + 10% dedup)
+- Final response must cite sources at three levels: main answer URLs, per-claim chunk citations, per-claim confidence scores (0-1)
+- Contradictory claims must explicitly document both sources and let user decide
+- Source availability must be tracked and reported (which sources succeeded, which failed/timed out)
 - Entity relationships must be bidirectional and versioned
 
 ### 1.2 API Contracts (`contracts/`)
@@ -180,19 +203,28 @@ Query → [Parallel Retrieval] → AggregatedContext → [Evaluation] → Filter
 Define contracts for:
 
 **agents.yaml** - CrewAI Agent definitions:
-- Evaluator Agent: Analyzes context quality, produces filter decisions
-- Synthesizer Agent: Consumes filtered context, produces structured responses
-- Orchestrator: Coordinates parallel retrieval and sequential evaluation/synthesis
+- Evaluator Agent: 
+  - Input: AggregatedContext (chunks from all sources)
+  - Process: Apply multi-factor quality scoring (30% source reputation + 20% recency + 40% relevance + 10% dedup)
+  - Output: FilteredContext with quality scores and filtering rationale for removed items
+- Synthesizer Agent: 
+  - Input: FilteredContext
+  - Process: Generate structured JSON response with three citation levels; detect and explicitly document contradictions
+  - Output: FinalResponse with main answer, key claims with per-claim citations and confidence, overall confidence, source availability status
+- Orchestrator: 
+  - Coordinates parallel retrieval from all 4 sources
+  - On source timeout/failure: continue with remaining sources, log failure (timestamp, source name, error), include source status in final response
+  - On all sources empty: return transparent response explaining no context found, invite user to refine query or seed RAG
 
 **tools.yaml** - Tool specifications:
-- RAG Tool: Query Milvus with semantic similarity, return top-k chunks
-- Firecrawl Tool: Execute web searches, parse results into context chunks
-- Arxiv Tool: Search academic papers, fetch summaries and citations
+- RAG Tool: Query Milvus with semantic similarity, return top-k chunks with confidence scores
+- Firecrawl Tool: Execute web searches, parse results into context chunks with recency metadata
+- Arxiv Tool: Search academic papers, fetch summaries and citations with source reputation metadata
 - Memory Tool: Store/retrieve conversation history and entity relationships
 
 **api.openapi.yaml** - REST endpoints (if REST layer added):
 - POST /query: Submit research query
-- GET /query/{id}: Retrieve query status and response
+- GET /query/{id}: Retrieve query status and response (with source availability and contradiction handling)
 - POST /conversation: Start new conversation session
 - GET /memory/entities: Browse stored entities
 
@@ -221,14 +253,15 @@ Create developer quickstart including:
 
 ## Key Design Decisions
 
-1. **crewAI Orchestration**: Use crewAI agents for clean separation of concerns (Evaluator vs Synthesizer) and easy extensibility
-2. **Parallel Retrieval**: All four sources queried concurrently to meet <30s response time
-3. **Modular Tools**: Each data source as independent tool with own error handling and retry logic
-4. **Structured Responses**: JSON-based with confidence scores and source citations for reliability
-5. **Graceful Degradation**: System continues with available sources if any single source fails
-6. **Memory Integration**: Zep handles both conversation history and entity relationship tracking
-7. **Streamlit Web UI**: Interactive multi-page web application for user queries and conversation history
-8. **MVP Focus**: No automated testing framework, manual testing only to accelerate MVP delivery
+1. **crewAI Orchestration**: Use crewAI agents for clean separation of concerns (Evaluator vs Synthesizer) and easy extensibility. Orchestrator handles parallel retrieval with graceful degradation.
+2. **Quality Filtering Formula**: Evaluator uses multi-factor scoring **30% source reputation + 20% recency + 40% semantic relevance + 10% deduplication** to operationalize "low-quality" filtering.
+3. **Contradiction Handling**: Synthesizer explicitly documents contradictory sources with dual attribution and lets user decide (never arbitrarily chooses one source or falsely synthesizes consensus).
+4. **Three-Level Citations**: Final response uses JSON with three citation levels: (1) main answer with source URLs, (2) key claims with chunk citations, (3) per-claim confidence scores (0-1) enabling both casual reading and deep verification.
+5. **Graceful Degradation**: System continues with available sources if any single source fails; logs failure with timestamp/source name; includes source availability status in response. When all sources empty, returns transparent guidance.
+6. **Source Failure Handling**: Individual source timeouts don't block workflow; system logs the failure and continues with remaining sources rather than failing fast.
+7. **Memory Integration**: Zep handles both conversation history and entity relationship tracking; failures to update memory don't block response delivery.
+8. **Streamlit Web UI**: Interactive multi-page web application for user queries and conversation history, displaying source citations and confidence scores.
+9. **MVP Focus**: No automated testing framework, manual testing only to accelerate MVP delivery. Source availability tracking enables manual validation.
 
 ## Next Steps
 
