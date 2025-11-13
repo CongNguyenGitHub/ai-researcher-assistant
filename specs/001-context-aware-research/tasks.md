@@ -9,33 +9,125 @@
 
 This document defines all implementation tasks for the Context-Aware Research Assistant, organized by user story in priority order (P1 → P2). All tasks follow strict checklist format and include explicit file paths for implementation.
 
-**Total Tasks**: 47  
-**User Stories**: 6 (5 P1 + 1 P2)  
-**Phases**: 5 (Setup + Foundational + 4 User Stories)
+**Total Tasks**: 81  
+**User Stories**: 7 (1 P1 foundational + 5 P1 core + 1 P2)  
+**Phases**: 6 (Phase 0: Data Ingestion + Phase 1: Setup + Phase 2: Foundational + Phases 3-7: User Stories)
 
 ### MVP Scope Recommendation
 
-**Minimum Viable Product** (Phase 1-4): Complete User Stories 1-4 (all P1):
+**Minimum Viable Product** (Phase 0-5): Complete all P1 user stories in order:
+- ✅ User Story 0: Upload and Index Documents (Phase 0 - Foundational data ingestion)
 - ✅ User Story 1: Submit Research Query
 - ✅ User Story 2: Multi-Source Context Retrieval  
 - ✅ User Story 3: Context Evaluation and Filtering
 - ✅ User Story 4: Answer Synthesis with Filtered Context
 - ✅ User Story 6: Workflow Orchestration via crewAI
 
-This delivers end-to-end query processing with parallel multi-source retrieval, evaluation, and synthesis.
+This delivers end-to-end system with document ingestion and query processing with parallel multi-source retrieval, evaluation, and synthesis.
 
-**Post-MVP** (Phase 5): Add User Story 5 (P2) for multi-turn conversation memory.
+**Post-MVP** (Phase 6): Add User Story 5 (P2) for multi-turn conversation memory.
 
 ### Task Execution Strategy
 
-1. **Sequential by Phase**: Phases 1-2 are blocking prerequisites; Phases 3-5 can overlap after Phase 2 completion
+1. **Sequential by Phase**: Phases are blocking prerequisites (0 → 1 → 2 → 3+)
 2. **Within Phase**: Many tasks marked [P] (parallelizable) can run concurrently
 3. **Testing**: MVP mode uses manual testing only; no automated test suite
 4. **Delivery**: Each phase is independently deliverable and testable
 
 ---
 
-## Phase 1: Setup & Project Initialization
+## Phase 0: Data Ingestion Infrastructure (P1 - Foundational)
+
+**Goal**: Build the document ingestion pipeline that populates the RAG knowledge base. Without this phase, the system has no internal documents to retrieve.
+
+**Independent Test**: Upload PDF → verify chunks in Milvus with embeddings → verify semantic search returns relevant chunks
+
+**Critical Path**: Phase 0 must complete before query processing makes sense (otherwise RAG source returns empty)
+
+### Configuration for Data Ingestion
+
+- [ ] [P] T001 Create `src/config.py` with data ingestion configuration: Add TensorLakeConfig (api_url, api_key), MilvusConfig (host, port, collection_name), update Config dataclass to include these sections, validate all required environment variables for document processing
+
+- [ ] [P] T002 Create `.env.example` with data ingestion variables: `TENSORLAKE_API_URL`, `TENSORLAKE_API_KEY`, `MILVUS_HOST`, `MILVUS_PORT`, `MILVUS_COLLECTION_NAME`, `GEMINI_API_KEY` (reused for embeddings), add detailed comments explaining each variable
+
+### Document Parser Implementation
+
+- [ ] [P] T003 Create `src/data_ingestion/__init__.py`: Module initialization, export parser, embedder, loader, and pipeline classes
+
+- [ ] [P] T004 Create `src/data_ingestion/parser.py`: Implement TensorLakeDocumentParser class with:
+  - Constructor: `__init__(api_url, api_key, chunk_size_tokens=512, chunk_overlap_tokens=64)`
+  - Method `parse_document(file_path) → ParsedDocument`: Call TensorLake API, extract text and chunks, validate chunk sizes
+  - Method `parse_batch(file_paths: List[str]) → List[ParsedDocument]`: Process multiple documents
+  - Error handling: Timeout, API errors, unsupported formats return clear error messages
+  - Logging: Log parsing progress, chunk counts, extraction time
+
+- [ ] [P] T005 Create `src/data_ingestion/embedder.py`: Implement GeminiEmbedder class with:
+  - Constructor: `__init__(api_key, model="text-embedding-004", dimension=768)`
+  - Method `embed_text(text: str) → List[float]`: Embed single chunk, return 768-dim vector
+  - Method `embed_batch(texts: List[str]) → List[List[float]]`: Efficient batch embedding
+  - Method `embed_query(query: str) → List[float]`: Special task type for query embeddings
+  - Error handling: Rate limit handling with exponential backoff, API errors, timeout handling
+  - Logging: Track embedding latency, batch processing time
+
+### Milvus Integration
+
+- [ ] [P] T006 Create `src/data_ingestion/milvus_loader.py`: Implement MilvusLoader class with:
+  - Constructor: `__init__(host, port, collection_name, embedding_dim=768)`
+  - Method `create_collection()`: Create Milvus collection with schema (id, document_id, chunk_text, embedding 768-dim, metadata, source_type)
+  - Method `insert_chunks(chunks: List[DocumentChunk])`: Batch insert with metadata
+  - Method `search(query_embedding: List[float], limit: int = 5) → List[DocumentChunk]`: Semantic similarity search
+  - Method `get_collection_stats()`: Return doc count, chunk count, storage size
+  - Method `drop_collection()`: For testing
+  - Error handling: Connection failures, timeout, index errors
+  - Logging: Track insert operations, search latency, index stats
+
+### Pipeline Orchestration
+
+- [ ] [P] T007 Create `src/data_ingestion/pipeline.py`: Implement DataIngestionPipeline orchestrator with:
+  - Constructor: `__init__(parser, embedder, loader)`
+  - Method `ingest_document(file_path) → DocumentIngestionResult`: Orchestrate parse → embed → store for single document
+  - Method `ingest_batch(file_paths: List[str]) → List[DocumentIngestionResult]`: Process multiple documents with progress tracking
+  - Method `ingest_directory(dir_path)`: Discover and process all files in directory
+  - Method `get_knowledge_base_stats() → KBStats`: Return indexed document count, chunk count, storage size
+  - Error handling: Graceful handling of file errors, API timeouts, storage failures
+  - Logging: Progress tracking, timing for each stage (parse, embed, store), total throughput
+
+### Streamlit Document Processing Page
+
+- [ ] [P] T008 Create `src/pages/document_processing.py`: Implement Streamlit document upload interface with:
+  - File upload widget: Drag-and-drop for PDF, DOCX, TXT, Markdown
+  - Supported formats display
+  - Progress bar for upload, parsing, embedding, storing stages
+  - Real-time status updates showing which stage is processing
+  - Knowledge base dashboard: Show total indexed documents, total chunks, storage size
+  - Recent uploads table: Show filename, status, chunk count, timestamp
+  - Error display: Clear error messages if upload/processing fails
+  - Refresh button: Manual refresh of knowledge base statistics
+
+### Module Integration
+
+- [ ] T009 Update `src/config.py` to include `@property data_ingestion_config()`: Provide convenient access to all data ingestion configuration
+
+- [ ] T010 Update `src/__init__.py` to export: TensorLakeDocumentParser, GeminiEmbedder, MilvusLoader, DataIngestionPipeline, Document, ParsedDocument, DocumentChunk classes
+
+- [ ] T011 Update `src/app.py` (or create if not exists): Add Streamlit multi-page setup, import and register `document_processing` page, set default page to research or document_processing based on state
+
+### Manual Testing for Phase 0
+
+- [ ] T012 Create test manual: `docs/test_data_ingestion.md` with:
+  - Test scenario 1: Upload single-page PDF, verify 1-3 chunks created, verify chunks in Milvus
+  - Test scenario 2: Upload 20-page Word document, verify chunk count ≈ 50-100 chunks
+  - Test scenario 3: Upload markdown file, verify section structure preserved in chunks
+  - Test scenario 4: Upload directory with 5 files, verify all files processed in batch
+  - Test scenario 5: Test error handling (unsupported format, corrupted file, API timeout)
+  - Test scenario 6: Verify semantic search works (upload document, query for relevant chunk)
+  - Expected outputs and validation criteria for each scenario
+
+- [ ] T013 Execute manual testing for Phase 0: Follow test scenarios, document results, verify knowledge base searchable before proceeding to Phase 1
+
+---
+
+## Phase 1: Setup & Project Initialization (Previously Phase 1)
 
 **Goal**: Establish Python project structure, environment configuration, and base dependencies
 
@@ -43,17 +135,17 @@ This delivers end-to-end query processing with parallel multi-source retrieval, 
 
 ### Setup Tasks
 
-- [ ] T001 Create project structure per plan.md layout (Python 3.10+): Create directories `src/`, `src/pages/`, `src/models/`, `src/services/`, `src/tools/`, `src/ui/`, `src/utils/`
+- [ ] T014 Create project structure per plan.md layout (Python 3.10+): Create directories `src/`, `src/pages/`, `src/models/`, `src/services/`, `src/tools/`, `src/ui/`, `src/utils/`
 
-- [ ] T002 Create `requirements.txt` with core dependencies: crewai==0.35.0, google-generativeai==0.3.0, streamlit==1.28.0, pymilvus==2.3.0, firecrawl-python==0.2.0, arxiv==2.1.0, zep-python==0.40.0, python-dotenv==1.0.0, pydantic==2.0.0, requests==2.31.0
+- [ ] T015 Create `requirements.txt` with core dependencies: crewai==0.35.0, google-generativeai==0.3.0, streamlit==1.28.0, pymilvus==2.3.0, firecrawl-python==0.2.0, arxiv==2.1.0, zep-python==0.40.0, python-dotenv==1.0.0, pydantic==2.0.0, requests==2.31.0
 
-- [ ] T003 Create `.env.example` template with environment variables: `GEMINI_API_KEY`, `GEMINI_MODEL`, `MILVUS_HOST`, `MILVUS_PORT`, `FIRECRAWL_API_KEY`, `ZEP_API_URL`, `ZEP_API_KEY`
+- [ ] T016 Create `.env.example` template with environment variables: `GEMINI_API_KEY`, `GEMINI_MODEL`, `MILVUS_HOST`, `MILVUS_PORT`, `FIRECRAWL_API_KEY`, `ZEP_API_URL`, `ZEP_API_KEY`
 
-- [ ] T004 Create `pyproject.toml` with project metadata: name="context-aware-research-assistant", version="0.1.0", description, Python>=3.10 requirement, dependencies pointing to requirements.txt
+- [ ] T017 Create `pyproject.toml` with project metadata: name="context-aware-research-assistant", version="0.1.0", description, Python>=3.10 requirement, dependencies pointing to requirements.txt
 
-- [ ] T005 Create `streamlit_config.toml` with Streamlit configuration: theme="light", max_upload_size=200 MB, logger.level="info"
+- [ ] T018 Create `streamlit_config.toml` with Streamlit configuration: theme="light", max_upload_size=200 MB, logger.level="info"
 
-- [ ] T006 Initialize git branch and create initial commit: `git checkout -b 001-context-aware-research && git add . && git commit -m "init: project structure and dependencies"`
+- [ ] T019 Initialize git branch and create initial commit: `git checkout -b 001-context-aware-research && git add . && git commit -m "init: project structure and dependencies"`
 
 ---
 
@@ -67,37 +159,37 @@ This delivers end-to-end query processing with parallel multi-source retrieval, 
 
 ### Configuration & Logging
 
-- [ ] T007 Create `src/config.py`: Load environment variables, validate required settings (Gemini, Milvus, Firecrawl, Arxiv, Zep), raise ConfigError if missing, expose as Config dataclass
+- [ ] T020 Create `src/config.py`: Load environment variables, validate required settings (Gemini, Milvus, Firecrawl, Arxiv, Zep, TensorLake), raise ConfigError if missing, expose as Config dataclass
 
-- [ ] T008 Create `src/logging_config.py`: Set up structured logging with JSON formatter, log levels (DEBUG/INFO/WARNING/ERROR), file rotation (daily, 10MB), include timestamps and context IDs
+- [ ] T021 Create `src/logging_config.py`: Set up structured logging with JSON formatter, log levels (DEBUG/INFO/WARNING/ERROR), file rotation (daily, 10MB), include timestamps and context IDs
 
 ### Data Models
 
-- [ ] T009 Create `src/models/query.py`: Implement Query dataclass with fields (id, user_id, text, timestamp, session_id, metadata dict), validation (non-empty text, max 5000 chars)
+- [ ] T022 Create `src/models/query.py`: Implement Query dataclass with fields (id, user_id, text, timestamp, session_id, metadata dict), validation (non-empty text, max 5000 chars)
 
-- [ ] T010 Create `src/models/context.py`: Implement ContextChunk dataclass with fields (id, source, text, confidence_score 0-1, relevance_score 0-1, metadata dict, timestamp), AggregatedContext as List[ContextChunk], FilteredContext with filtering_rationale
+- [ ] T023 Create `src/models/context.py`: Implement ContextChunk dataclass with fields (id, source, text, confidence_score 0-1, relevance_score 0-1, metadata dict, timestamp), AggregatedContext as List[ContextChunk], FilteredContext with filtering_rationale
 
-- [ ] T011 Create `src/models/response.py`: Implement FinalResponse dataclass with JSON schema structure: main_answer (text, source_links list), key_claims (list of {text, chunk_citations list, confidence_score 0-1}), overall_confidence 0-1, source_availability {source_name: succeeded/failed/timeout}, metadata {timestamp, source_count, failed_sources list}
+- [ ] T024 Create `src/models/response.py`: Implement FinalResponse dataclass with JSON schema structure: main_answer (text, source_links list), key_claims (list of {text, chunk_citations list, confidence_score 0-1}), overall_confidence 0-1, source_availability {source_name: succeeded/failed/timeout}, metadata {timestamp, source_count, failed_sources list}
 
-- [ ] T012 Create `src/models/memory.py`: Implement ConversationHistory (user_id, session_id, messages list, timestamp), UserPreferences (response_format, depth, source_preferences, topic_interests), Entity (name, type, relationships list, created_at)
+- [ ] T025 Create `src/models/memory.py`: Implement ConversationHistory (user_id, session_id, messages list, timestamp), UserPreferences (response_format, depth, source_preferences, topic_interests), Entity (name, type, relationships list, created_at)
 
 ### Base Tool Infrastructure
 
-- [ ] T013 Create `src/tools/__init__.py`: Define ToolBase abstract class with execute() method, timeout handling (7s max per spec), return type List[ContextChunk], error handling that never raises exceptions, include source attribution
+- [ ] T026 Create `src/tools/__init__.py`: Define ToolBase abstract class with execute() method, timeout handling (7s max per spec), return type List[ContextChunk], error handling that never raises exceptions, include source attribution
 
-- [ ] T014 Create `src/tools/config.py`: Define tool configuration (timeouts, retry counts, rate limits) for RAG (Milvus), Firecrawl, Arxiv, Memory (Zep)
+- [ ] T027 Create `src/tools/config.py`: Define tool configuration (timeouts, retry counts, rate limits) for RAG (Milvus), Firecrawl, Arxiv, Memory (Zep)
 
 ### Utilities & Validators
 
-- [ ] T015 Create `src/utils/validators.py`: Implement validate_query(), validate_context_chunk(), validate_filtered_context(), validate_response() functions with detailed error messages
+- [ ] T028 Create `src/utils/validators.py`: Implement validate_query(), validate_context_chunk(), validate_filtered_context(), validate_response() functions with detailed error messages
 
-- [ ] T016 Create `src/utils/formatters.py`: Implement JSON response formatter, citation formatter (3-level: main answer → key claims → per-claim confidence), contradiction formatter (dual-source explicit notation)
+- [ ] T029 Create `src/utils/formatters.py`: Implement JSON response formatter, citation formatter (3-level: main answer → key claims → per-claim confidence), contradiction formatter (dual-source explicit notation)
 
 ### Environment & Initialization
 
-- [ ] T017 Copy `.env.example` to `.env` in development environment, populate with test credentials/endpoints for Milvus, Firecrawl, Arxiv, Zep
+- [ ] T030 Copy `.env.example` to `.env` in development environment, populate with test credentials/endpoints for Milvus, Firecrawl, Arxiv, Zep, TensorLake
 
-- [ ] T018 Create `src/__init__.py`: Export Config, Query, ContextChunk, AggregatedContext, FilteredContext, FinalResponse, ConversationHistory, UserPreferences, Entity, logging configuration
+- [ ] T031 Create `src/__init__.py`: Export Config, Query, ContextChunk, AggregatedContext, FilteredContext, FinalResponse, ConversationHistory, UserPreferences, Entity, logging configuration
 
 ---
 
@@ -463,3 +555,5 @@ Phase 9: Polish (T084-T097)  ← Final phase, all features must be complete
 - **Parallelization**: 28 tasks marked [P] can execute concurrently
 - **Critical Path**: Phase 1 → Phase 2 → US1/US2 (parallel) → US3 → US4 → US6 Orchestration
 - **Estimated Timeline**: 4 weeks to MVP (all P1 user stories), 1 additional week for post-MVP
+
+

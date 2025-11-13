@@ -15,6 +15,24 @@
 
 ## User Scenarios & Testing *(mandatory)*
 
+### User Story 0 - Upload and Index Documents (Priority: P1 - Foundational)
+
+A user wants to build a personal knowledge base by uploading documents (PDFs, Word documents, Markdown files, text files) that will be parsed, embedded, and indexed in the Milvus vector database for retrieval during research queries.
+
+**Why this priority**: This is a foundational prerequisite for the RAG system. Without the ability to ingest and index documents, the entire system lacks a core source of knowledge. This must be completed before query processing can effectively retrieve relevant context.
+
+**Independent Test**: Can be fully tested by uploading a document, verifying it is parsed into chunks, embedded with 768-dimensional vectors, and stored in Milvus with full metadata attribution.
+
+**Acceptance Scenarios**:
+
+1. **Given** a user accesses the document upload interface, **When** they select a document file, **Then** the system displays the file information and readiness for upload
+2. **Given** a document is uploaded (PDF, DOCX, TXT, or Markdown), **When** processing begins, **Then** the system parses the document using TensorLake API
+3. **Given** a document has been parsed, **When** the system processes the chunks, **Then** each chunk is embedded using Gemini text-embedding-004 (768 dimensions)
+4. **Given** chunks are embedded, **When** they are stored, **Then** they are inserted into Milvus with full metadata (source, chunk number, embedding, text, document metadata)
+5. **Given** a document has been successfully indexed, **When** the user submits a research query, **Then** relevant chunks from the indexed document are retrieved by semantic similarity
+
+---
+
 ### User Story 1 - Submit Research Query (Priority: P1)
 
 A user wants to get comprehensive answers to research questions. They submit a query and the system processes it end-to-end to deliver a final, well-synthesized response.
@@ -133,25 +151,33 @@ The entire multi-step workflow—from query input through parallel context retri
 ### Functional Requirements
 
 - **FR-001**: System MUST accept user queries in text format through a defined input interface
-- **FR-002**: System MUST orchestrate a multi-step workflow using crewAI agents
-- **FR-003**: System MUST retrieve context from a vector database (Milvus) containing parsed document chunks
-- **FR-004**: System MUST retrieve real-time web context using the Firecrawl API
-- **FR-005**: System MUST retrieve academic paper references and summaries using the Arxiv API
-- **FR-006**: System MUST retrieve conversation history, user preferences, and entity relationships from Zep Memory
-- **FR-007**: System MUST execute all four context retrieval sources in parallel
-- **FR-008**: System MUST aggregate context from all four sources before evaluation
-- **FR-009**: System MUST provide an Evaluator agent that analyzes aggregated context and filters out irrelevant, redundant, or low-quality information using multi-factor quality scoring (30% source reputation + 20% recency + 40% semantic relevance + 10% deduplication)
-- **FR-010**: System MUST provide a Synthesizer agent that generates comprehensive answers using only filtered context, with explicit handling of contradictory information: acknowledge both perspectives with source attribution, note the contradiction, and let user decide
-- **FR-011**: System MUST produce final responses in structured JSON format with three citation levels: (1) main answer with source links, (2) key claims with specific chunk citations, (3) confidence score per claim
-- **FR-012**: System MUST update Zep Memory with the final response and relevant context for future interactions
-- **FR-013**: System MUST track entities and relationships mentioned in responses for enhanced memory
-- **FR-014**: System MUST document all assumptions made during context evaluation and synthesis
-- **FR-015**: System MUST support document parsing and embedding for populating the RAG database
-- **FR-016**: System MUST handle errors gracefully when individual sources fail: continue with remaining sources, log failures, and include source availability status in response
-- **FR-017**: System MUST handle the no-context scenario by returning a transparent response explaining no context was found and inviting user to refine query or provide seed documents for RAG
+- **FR-002**: System MUST accept document uploads (PDF, DOCX, TXT, Markdown formats) through a web interface
+- **FR-003**: System MUST parse uploaded documents using the TensorLake API with intelligent chunking (512 tokens per chunk, 64 token overlap)
+- **FR-004**: System MUST embed document chunks using Google Gemini text-embedding-004 model (768-dimensional vectors)
+- **FR-005**: System MUST store embedded chunks in Milvus vector database with full metadata attribution (source document, chunk position, timestamp, text content)
+- **FR-006**: System MUST provide real-time progress tracking for document ingestion (parsing, embedding, storage stages)
+- **FR-007**: System MUST display knowledge base status showing total indexed documents, chunk count, and storage statistics
+- **FR-008**: System MUST orchestrate a multi-step workflow using crewAI agents
+- **FR-009**: System MUST retrieve context from a vector database (Milvus) containing parsed document chunks
+- **FR-010**: System MUST retrieve real-time web context using the Firecrawl API
+- **FR-011**: System MUST retrieve academic paper references and summaries using the Arxiv API
+- **FR-012**: System MUST retrieve conversation history, user preferences, and entity relationships from Zep Memory
+- **FR-013**: System MUST execute all four context retrieval sources in parallel
+- **FR-014**: System MUST aggregate context from all four sources before evaluation
+- **FR-015**: System MUST provide an Evaluator agent that analyzes aggregated context and filters out irrelevant, redundant, or low-quality information using multi-factor quality scoring (30% source reputation + 20% recency + 40% semantic relevance + 10% deduplication)
+- **FR-016**: System MUST provide a Synthesizer agent that generates comprehensive answers using only filtered context, with explicit handling of contradictory information: acknowledge both perspectives with source attribution, note the contradiction, and let user decide
+- **FR-017**: System MUST produce final responses in structured JSON format with three citation levels: (1) main answer with source links, (2) key claims with specific chunk citations, (3) confidence score per claim
+- **FR-018**: System MUST update Zep Memory with the final response and relevant context for future interactions
+- **FR-019**: System MUST track entities and relationships mentioned in responses for enhanced memory
+- **FR-020**: System MUST document all assumptions made during context evaluation and synthesis
+- **FR-021**: System MUST handle errors gracefully when individual sources fail: continue with remaining sources, log failures, and include source availability status in response
+- **FR-022**: System MUST handle the no-context scenario by returning a transparent response explaining no context was found and inviting user to refine query or provide seed documents for RAG
 
 ### Key Entities *(include if feature involves data)*
 
+- **Document**: A user-uploaded file (PDF, DOCX, TXT, or Markdown) to be indexed in the RAG system. Contains filename, file size, upload timestamp, document metadata, and processing status.
+- **ParsedDocument**: Result of parsing a document using TensorLake API. Contains extracted text, structured chunks with position information, and metadata including title, author, and creation date.
+- **DocumentChunk**: A discrete section of a parsed document (typically 512 tokens with 64-token overlap). Contains chunk text, position in source, embedding vector (768 dimensions), metadata, and confidence scores.
 - **Query**: The user's research question or information request. Contains the question text, timestamp, user identifier, and query context.
 - **Context Chunk**: A discrete piece of information from any source (document, web page, academic paper, or memory). Contains source type, text content, confidence score, and relevance metadata.
 - **Aggregated Context**: Collection of all context chunks retrieved from RAG, web search, academic search, and memory sources. Maintains source attribution and retrieval metadata.
@@ -160,34 +186,40 @@ The entire multi-step workflow—from query input through parallel context retri
 - **Conversation History**: Record of prior user queries, system responses, and extracted insights. Supports multi-turn interactions and context continuity.
 - **User Preferences**: Stored user settings such as response format preferences, preferred sources, information depth, and topic interests.
 - **Entity**: Named concepts (people, organizations, topics, etc.) mentioned across interactions. Tracked with relationships to build a user-specific knowledge graph.
+- **Knowledge Base**: The collection of all indexed documents in Milvus, including statistics on document count, chunk count, total storage size, and last update timestamp.
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
-- **SC-001**: System processes user queries and returns final responses within 30 seconds from query submission
-- **SC-002**: Context is successfully retrieved from at least 2 of the 4 sources for 95% of queries
-- **SC-003**: Evaluator agent successfully filters low-quality context, improving answer relevance by at least 30% compared to unfiltered context (measured via user relevance ratings)
-- **SC-004**: Final responses directly address user queries with 90% accuracy as measured by comparison against ground-truth answers
-- **SC-005**: System handles parallel retrieval from all four sources without blocking, with total parallel execution time less than sequential execution time
-- **SC-006**: User satisfaction with answer comprehensiveness is at least 4.0 out of 5.0 stars
-- **SC-007**: Memory integration successfully captures conversation context, enabling 80% of follow-up queries to reference prior interactions
-- **SC-008**: System gracefully handles failure of any single context source, continuing to function with remaining sources
-- **SC-009**: Document parsing and embedding successfully indexes new documents within 5 minutes of upload
-- **SC-010**: Entity extraction and relationship tracking achieves 85% accuracy for named entities across responses
+- **SC-001**: Document upload and indexing completes within 5 minutes for documents up to 100 pages
+- **SC-002**: Parsed documents maintain semantic coherence with maximum 512 tokens per chunk and 64-token overlap
+- **SC-003**: Document embeddings are successfully stored in Milvus with 100% metadata preservation (source, timestamp, position)
+- **SC-004**: System processes user queries and returns final responses within 30 seconds from query submission
+- **SC-005**: Context is successfully retrieved from at least 2 of the 4 sources for 95% of queries
+- **SC-006**: Evaluator agent successfully filters low-quality context, improving answer relevance by at least 30% compared to unfiltered context (measured via user relevance ratings)
+- **SC-007**: Final responses directly address user queries with 90% accuracy as measured by comparison against ground-truth answers
+- **SC-008**: System handles parallel retrieval from all four sources without blocking, with total parallel execution time less than sequential execution time
+- **SC-009**: User satisfaction with answer comprehensiveness is at least 4.0 out of 5.0 stars
+- **SC-010**: Memory integration successfully captures conversation context, enabling 80% of follow-up queries to reference prior interactions
+- **SC-011**: System gracefully handles failure of any single context source, continuing to function with remaining sources
+- **SC-012**: Entity extraction and relationship tracking achieves 85% accuracy for named entities across responses
+- **SC-013**: TensorLake document parsing achieves 95% accuracy for text extraction from PDF, DOCX, TXT, and Markdown files
+- **SC-014**: Knowledge base dashboard displays accurate statistics (document count, chunk count, storage size) with <2 second refresh latency
 
 ## Assumptions
 
-1. **crewAI Framework**: The crewAI orchestration framework is available and will be used to manage agent workflows and communication
-2. **Milvus Vector Database**: A Milvus instance exists or will be provisioned with pre-populated document embeddings, or the document indexing capability will be implemented separately
-3. **API Availability**: Firecrawl and Arxiv APIs are accessible and provide reliable responses for web and academic searches
-4. **Zep Memory Service**: A Zep memory service is operational to store conversation history and user context
-5. **Document Parser**: A document parser exists to extract and chunk documents from various formats (PDF, markdown, etc.)
-6. **Embedding Model**: An embedding model (e.g., via OpenAI, local, or another provider) is available for vectorizing documents and queries
-7. **Response Format**: The "structured output" format will be defined in a separate design specification (likely JSON with citations, confidence scores, and source attribution)
+1. **TensorLake Parser**: The TensorLake API is available and will be used to parse documents with intelligent chunking (512 tokens per chunk, 64 token overlap)
+2. **Gemini Embeddings**: Google Gemini text-embedding-004 model is available for generating 768-dimensional embeddings
+3. **crewAI Framework**: The crewAI orchestration framework is available and will be used to manage agent workflows and communication
+4. **Milvus Vector Database**: A Milvus instance exists or will be provisioned to store 768-dimensional embeddings with IVF_FLAT indexing
+5. **API Availability**: Firecrawl, Arxiv, and TensorLake APIs are accessible and provide reliable responses
+6. **Zep Memory Service**: A Zep memory service is operational to store conversation history and user context
+7. **Response Format**: The "structured output" format will be JSON with three-level citations, confidence scores, and source attribution
 8. **No Real-time Knowledge Requirement**: The system is designed for research queries; it is not required to answer questions about breaking news or events occurring after the document corpus was created
 9. **User Authentication**: Basic user identification is available for memory and preference tracking (out of scope for this feature)
 10. **Error Tolerance**: Individual source failures are acceptable; the system should degrade gracefully rather than failing completely
+11. **Document Format Support**: User-uploaded documents are expected to be in standard formats (PDF, DOCX, TXT, Markdown) with standard encoding
 
 ## Dependencies & Constraints
 

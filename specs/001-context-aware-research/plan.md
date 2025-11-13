@@ -20,7 +20,7 @@ The Context-Aware Research Assistant is a crewAI-orchestrated system that accept
 **Testing**: MVP mode - no automated tests, manual testing only  
 **Target Platform**: Linux/Mac/Windows web application (Streamlit), deployable as standalone web service  
 **Project Type**: Single Python project (Streamlit web application with backend orchestration)  
-**Performance Goals**: <30 second response time per query, parallel execution across 4 sources  
+**Performance Goals**: <30 second response time per query, parallel execution across 4 sources, <5 minute document ingestion  
 **Constraints**: <30 second total latency, graceful degradation if any single source fails, maintain context coherence across multi-turn conversations  
 **Scale/Scope**: MVP supports single-user/multi-turn conversations via web UI with document ingestion, designed for future scaling to multi-user with session management
 
@@ -108,7 +108,100 @@ streamlit_config.toml  # Streamlit configuration
 - Supports both Streamlit web interface and programmatic usage
 
 
-## Phase 0: Research & Unknowns Resolution
+---
+
+## Phase 0: Data Ingestion Infrastructure
+
+Phase 0 establishes the foundational data pipeline that feeds the entire system. Without this phase, the RAG source (Milvus) would be empty, rendering the system unable to retrieve internal knowledge.
+
+### Goals
+1. Implement TensorLake-based document parser for extracting text from uploaded documents
+2. Implement Gemini embedding pipeline for converting document chunks to 768-dimensional vectors
+3. Implement Milvus loader for storing embedded chunks with full metadata
+4. Create Streamlit document upload interface with progress tracking
+5. Enable users to populate the knowledge base by uploading documents
+
+### Key Deliverables
+
+**Document Parser** (`src/data_ingestion/parser.py`):
+- TensorLakeDocumentParser class using TensorLake API
+- Support for PDF, DOCX, TXT, Markdown formats
+- Intelligent chunking: 512 tokens per chunk with 64-token overlap
+- Metadata extraction: title, author, created date, page numbers
+- Error handling for malformed documents
+- Validation that chunks meet quality standards
+
+**Embedding Service** (`src/data_ingestion/embedder.py`):
+- GeminiEmbedder class using Google Gemini text-embedding-004
+- Generates 768-dimensional vectors for all chunks
+- Batch processing support for efficiency
+- Handles embedding failures gracefully
+- Stores embedding model version for future migration
+
+**Milvus Loader** (`src/data_ingestion/milvus_loader.py`):
+- MilvusLoader class for storing embeddings in Milvus
+- Collection schema with 768-dim embedding field
+- Batch insert operations for performance
+- Metadata preservation (document source, chunk position, timestamps)
+- IVF_FLAT indexing for fast similarity search
+- Index operations: create, insert, search, get stats
+
+**Data Ingestion Pipeline** (`src/data_ingestion/pipeline.py`):
+- DataIngestionPipeline orchestrator
+- Coordinates Parse → Embed → Store workflow
+- Single document, batch, and directory processing
+- Progress tracking and logging
+- Error recovery and retry logic
+- Knowledge base statistics (doc count, chunk count, storage size)
+
+**Streamlit UI** (`src/pages/document_processing.py`):
+- Document upload interface with drag-and-drop
+- Real-time progress tracking (parsing, embedding, storing stages)
+- Knowledge base dashboard showing statistics
+- Recent ingestion results display
+- Support for multiple file formats
+- Clear error messages for failed uploads
+
+### Why This Phase is Critical
+
+The RAG tool depends on this phase for its knowledge base. Without document ingestion:
+- Users cannot provide seed documents
+- The system cannot answer questions about private documents
+- The "no context found" fallback becomes the common case
+- The multi-source system degrades to 3 sources instead of 4
+
+### Dependencies
+
+- TensorLake API (must be configured in .env)
+- Google Gemini API (for embeddings)
+- Milvus instance (must be running)
+- Streamlit application framework
+
+### Testing Strategy
+
+Manual testing for Phase 0:
+1. Upload single-page PDF → verify chunks created → verify embeddings stored
+2. Upload 10-page Word document → verify correct chunk count → verify search works
+3. Upload directory of markdown files → verify batch processing → verify all files indexed
+4. Test error handling: malformed PDF, unsupported format, API timeout
+5. Verify knowledge base dashboard shows correct statistics
+6. Verify semantic search retrieves relevant chunks from indexed documents
+
+### Implementation Order
+
+1. Create `src/data_ingestion/` directory structure
+2. Implement `parser.py` with TensorLake integration
+3. Implement `embedder.py` with Gemini integration
+4. Implement `milvus_loader.py` with schema and operations
+5. Implement `pipeline.py` orchestration
+6. Implement `document_processing.py` Streamlit page
+7. Update main `src/app.py` to include document_processing page
+8. Manual testing of end-to-end workflow
+9. Validate Milvus contains indexed documents for subsequent RAG tool usage
+
+---
+
+## Phase 1: Research & Specifications
 
 Phase 0 will resolve the following research areas identified from the specification and technical context:
 

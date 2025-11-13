@@ -528,7 +528,266 @@ logger.info(
 
 ---
 
-## Summary of Design Decisions
+## 7. TensorLake Document Parsing Integration
+
+### Decision: TensorLake API for Intelligent Document Parsing and Chunking
+
+**What we chose**: Use TensorLake API as the document parser for extracting text from various file formats (PDF, DOCX, TXT, Markdown) with intelligent chunking strategy (512 tokens per chunk with 64-token overlap).
+
+**Rationale**:
+- **Format Support**: TensorLake handles multiple document formats natively without format-specific libraries
+- **Intelligent Chunking**: Built-in ability to respect document structure (paragraphs, sections, pages) rather than naive token splitting
+- **Metadata Extraction**: Extracts structured metadata (title, author, creation date) from documents
+- **API-Based**: No dependency on local libraries; simpler deployment and version management
+- **Production-Ready**: Designed for enterprise document processing with reliability guarantees
+
+**Alternatives considered**:
+- Unstructured library: Good but requires multiple format-specific parsers; more maintenance
+- PyPDF + python-docx: Works but requires combining multiple libraries for each format; naive chunking
+- LangChain document loaders: Good but adds another abstraction layer; less direct control
+- Manual parsing per format: Too complex and error-prone for production
+
+### Implementation Pattern
+
+```python
+# TensorLake document parsing workflow
+parser = TensorLakeDocumentParser(api_key=config.tensorlake_api_key)
+
+# Upload and parse document
+parsed_doc = parser.parse_document(
+    file_path="/path/to/document.pdf",
+    chunk_size_tokens=512,
+    chunk_overlap_tokens=64,
+    extract_metadata=True
+)
+
+# Result includes:
+# - raw_text: Full extracted text
+# - chunks: List of DocumentChunks with:
+#   - text: Chunk content
+#   - position_in_source: Character offset
+#   - section_title: If hierarchical
+#   - metadata: Document metadata
+# - quality_score: How well parsing succeeded (0-1)
+
+for chunk in parsed_doc.chunks:
+    print(f"Chunk {chunk.chunk_number}: {chunk.text[:100]}...")
+    print(f"  Metadata: {chunk.metadata}")
+```
+
+### Chunk Size Rationale
+
+- **512 tokens per chunk**: Balances context coherence with retrieval precision
+  - Too small (<256): Loses semantic context, requires more vectors
+  - Too large (>1024): Brings noise when retrieving, hard to match specific queries
+  - 512 is sweet spot for typical documents
+  
+- **64-token overlap**: Ensures continuity across chunk boundaries
+  - Prevents missing information at chunk transitions
+  - Typical text (10 words) = 13 tokens, so 64 tokens ≈ 50 words
+  - Reduces "split claim" problem where key information spans chunks
+
+### Error Handling
+
+```python
+class TensorLakeDocumentParser:
+    def parse_document(self, file_path: str) -> ParsedDocument:
+        try:
+            # Call TensorLake API
+            response = requests.post(
+                f"{config.tensorlake_api_url}/parse",
+                files={"document": open(file_path, "rb")},
+                headers={"Authorization": f"Bearer {config.tensorlake_api_key}"},
+                timeout=60  # 1 minute timeout for parsing
+            )
+            response.raise_for_status()
+            return ParsedDocument(**response.json())
+        
+        except TimeoutError:
+            logger.error(f"TensorLake timeout parsing {file_path}")
+            raise DocumentParsingError("Parser timeout")
+        
+        except HTTPError as e:
+            if e.response.status_code == 400:
+                raise DocumentParsingError(f"Unsupported format: {file_path}")
+            elif e.response.status_code == 413:
+                raise DocumentParsingError(f"File too large: {file_path}")
+            raise DocumentParsingError(f"API error: {e}")
+        
+        except Exception as e:
+            logger.error(f"Unexpected parse error: {e}")
+            raise DocumentParsingError(f"Parsing failed: {e}")
+```
+
+---
+
+## 8. Google Gemini Text Embeddings
+
+### Decision: Google Gemini text-embedding-004 (768 Dimensions)
+
+**What we chose**: Use Google Gemini text-embedding-004 model for generating 768-dimensional embeddings for all document chunks and queries.
+
+**Rationale**:
+- **768 Dimensions**: Balanced dimensionality
+  - Captures sufficient semantic information (vs 384-dim models)
+  - Reduces memory/storage overhead (vs 1536-dim OpenAI)
+  - Faster similarity computations in Milvus
+  - Sufficient for Milvus with IVF_FLAT indexing
+  
+- **Unified LLM Stack**: Using Gemini for both synthesis (LLM) and embeddings simplifies:
+  - Single API authentication
+  - Consistent semantic understanding
+  - Simplified configuration and deployment
+  - Easier future migration to newer Gemini models
+  
+- **Production Ready**: Gemini embeddings API is stable and well-documented
+- **Cost Efficient**: Competitive pricing for production use
+- **Multilingual**: Handles multiple languages naturally
+
+**Alternatives considered**:
+- OpenAI text-embedding-3-small (1536 dim): More expensive, larger vectors
+- OpenAI text-embedding-3-large (3072 dim): Much more expensive, slower
+- Local embeddings (sentence-transformers): Requires GPU, harder to scale
+- MiniLM (384 dim): Too small for nuanced semantic matching
+- Cohere embeddings: Additional API dependency
+
+### Implementation Pattern
+
+```python
+class GeminiEmbedder:
+    def __init__(self, api_key: str):
+        self.client = genai.Client(api_key=api_key)
+        self.model = "text-embedding-004"
+        self.dimension = 768
+    
+    def embed_text(self, text: str) -> List[float]:
+        """Embed a single text, returning 768-dim vector"""
+        response = self.client.embed_content(
+            model=f"models/{self.model}",
+            content=text,
+            task_type="RETRIEVAL_DOCUMENT"  # For stored documents
+        )
+        embedding = response['embedding']
+        assert len(embedding) == 768, f"Expected 768 dims, got {len(embedding)}"
+        return embedding
+    
+    def embed_query(self, query: str) -> List[float]:
+        """Embed a query for similarity search"""
+        response = self.client.embed_content(
+            model=f"models/{self.model}",
+            content=query,
+            task_type="RETRIEVAL_QUERY"  # For search queries
+        )
+        return response['embedding']
+    
+    def embed_batch(self, texts: List[str]) -> List[List[float]]:
+        """Embed multiple texts efficiently"""
+        embeddings = []
+        for text in texts:
+            embeddings.append(self.embed_text(text))
+        return embeddings
+
+# Usage
+embedder = GeminiEmbedder(api_key=config.gemini_api_key)
+
+# Embed document chunks
+for chunk in parsed_document.chunks:
+    chunk.embedding = embedder.embed_text(chunk.text)
+    chunk.embedding_model = "text-embedding-004"
+
+# Embed query for retrieval
+query_embedding = embedder.embed_query(user_query)
+```
+
+### Milvus Schema Integration
+
+```python
+# Milvus collection schema uses 768 dimensions
+schema = FieldSchema(
+    name="embedding",
+    dtype=DataType.FLOAT_VECTOR,
+    dim=768  # Google Gemini text-embedding-004
+)
+
+# IVF_FLAT indexing parameters tuned for 768-dim vectors
+index_params = {
+    "metric_type": "L2",  # Euclidean distance (standard for Milvus)
+    "index_type": "IVF_FLAT",
+    "params": {
+        "nlist": 128  # 128 clusters appropriate for large corpus
+    }
+}
+
+# Similarity search returns top-k by distance
+results = collection.search(
+    data=[query_embedding],  # 768-dim query vector
+    anns_field="embedding",
+    param={"metric_type": "L2", "params": {"nprobe": 10}},
+    limit=5  # Return top 5 similar chunks
+)
+```
+
+### Embedding Lifecycle
+
+```python
+# 1. Document ingestion phase
+document_chunks = tensorlake_parser.parse(file)
+for chunk in document_chunks:
+    chunk.embedding = embedder.embed_text(chunk.text)
+    chunk.embedding_time_ms = measure_time()
+    milvus_loader.insert_chunk(chunk)
+
+# 2. Query processing phase
+query_obj = receive_user_query()
+query_embedding = embedder.embed_query(query_obj.text)
+
+# 3. Semantic search
+similar_chunks = milvus_collection.search(
+    data=[query_embedding],
+    limit=5
+)
+
+# 4. Reranking (in Evaluator)
+for chunk in similar_chunks:
+    quality_score = evaluate(chunk, query_obj)  # Multi-factor scoring
+    chunk.confidence_score = quality_score
+```
+
+### Error Handling for Embeddings
+
+```python
+class GeminiEmbedder:
+    def embed_with_retry(self, text: str, max_retries: int = 3) -> List[float]:
+        for attempt in range(max_retries):
+            try:
+                return self.embed_text(text)
+            except RateLimitError:
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt  # Exponential backoff
+                    logger.info(f"Rate limited, waiting {wait_time}s")
+                    time.sleep(wait_time)
+                else:
+                    raise EmbeddingError("Failed after retries")
+            except APIError as e:
+                if "overloaded" in str(e).lower():
+                    time.sleep(5)
+                    continue
+                raise EmbeddingError(f"API error: {e}")
+            except Exception as e:
+                logger.error(f"Unexpected embedding error: {e}")
+                raise EmbeddingError(f"Unexpected error: {e}")
+```
+
+### Performance Characteristics
+
+- **Latency per chunk**: ~100-200ms (network + API processing)
+- **Batch efficiency**: Processing 10 chunks in parallel ≈ 200-300ms total
+- **Memory per vector**: 768 floats × 4 bytes = ~3 KB per vector
+- **Query latency**: ~50-100ms for Milvus similarity search on 768-dim vectors
+
+---
+
+## Summary of Design Decisions (Updated)
 
 | Area | Decision | Key Benefit |
 |------|----------|------------|
@@ -539,6 +798,8 @@ logger.info(
 | Response Format | JSON with citations | Machine-readable + transparent |
 | Memory | Dual timeline + entity graph | Multi-turn coherence + knowledge tracking |
 | Resilience | Tool-level fault tolerance | Graceful degradation, user-friendly |
+| Document Parsing | TensorLake API | Format-agnostic, intelligent chunking (512 tokens) |
+| Embeddings | Gemini text-embedding-004 (768 dims) | Balanced quality/cost, unified Gemini stack |
 
 ---
 
@@ -551,5 +812,8 @@ logger.info(
 ✅ **Response format**: JSON schema with source attribution and confidence scores
 ✅ **Zep memory schema**: Dual-mode (conversation history + entity graph)
 ✅ **Error handling**: Tool-level fault tolerance with graceful degradation
+✅ **Document parser**: TensorLake API with 512-token chunks and 64-token overlap
+✅ **Embedding model**: Google Gemini text-embedding-004 (768 dimensions)
+✅ **Document ingestion pipeline**: Parse → Embed → Store workflow in single data_ingestion module
 
 All Phase 0 research complete. Ready for Phase 1: Design & Contracts.

@@ -44,7 +44,145 @@ class Query(BaseModel):
 
 ---
 
-### 2. ContextChunk
+### 1b. Document
+
+**Purpose**: Represents a user-uploaded file to be indexed in the RAG system
+
+**Fields**:
+```python
+class Document(BaseModel):
+    id: str  # UUID
+    user_id: str  # User who uploaded it
+    filename: str  # Original filename
+    file_type: str  # "pdf", "docx", "txt", "markdown"
+    file_size: int  # Bytes
+    
+    # Upload info
+    uploaded_at: datetime
+    upload_status: str  # "pending", "parsing", "embedding", "storing", "complete", "failed"
+    
+    # Processing metadata
+    parsing_status: str  # Current processing stage
+    parsed_document: Optional[ParsedDocument]  # Result of parsing
+    chunks_created: int  # How many chunks from this document
+    embedding_status: str  # Status of embedding chunks
+    storage_status: str  # Status of storing in Milvus
+    
+    # Document metadata (extracted during parsing)
+    title: Optional[str]
+    author: Optional[str]
+    created_date: Optional[datetime]
+    modification_date: Optional[datetime]
+    language: Optional[str]  # Detected language
+    pages: Optional[int]  # For PDF, DOCX
+    
+    # Errors
+    error_message: Optional[str]  # If failed
+    error_details: Optional[Dict]  # Stack trace, API response, etc.
+    
+    # Tracking
+    last_updated: datetime
+    collection_name: str  # Milvus collection where chunks are stored
+
+class ParsedDocument(BaseModel):
+    """Result of TensorLake parsing"""
+    id: str
+    document_id: str  # Reference to parent Document
+    raw_text: str  # Full extracted text
+    chunks: List[DocumentChunk]  # Extracted chunks
+    
+    # Parsing metadata
+    parser_version: str  # Which parser/API version used
+    parsing_time_ms: float
+    chunk_count: int
+    estimated_tokens: int  # Total tokens in document
+    quality_score: float  # How well parsing succeeded (0-1)
+    
+    timestamp: datetime
+
+class DocumentChunk(BaseModel):
+    """A discrete section of a parsed document"""
+    id: str  # UUID
+    document_id: str  # Parent document
+    parsed_document_id: str
+    
+    # Content
+    text: str  # Chunk text content
+    chunk_number: int  # Order in document (0-indexed)
+    position_in_source: int  # Character offset in original document
+    
+    # Chunking metadata
+    start_page: Optional[int]  # For paginated documents
+    end_page: Optional[int]
+    section_title: Optional[str]  # For structured documents
+    heading_level: Optional[int]  # If markdown/hierarchical
+    
+    # Encoding info
+    token_count: int  # Actual tokens in chunk
+    character_count: int
+    
+    # Embedding
+    embedding: Optional[List[float]]  # 768-dimensional Gemini embedding
+    embedding_model: str  # "text-embedding-004"
+    embedding_time_ms: float
+    
+    # Storage
+    milvus_id: Optional[int]  # ID assigned by Milvus
+    stored_in_milvus: bool
+    storage_timestamp: Optional[datetime]
+    
+    # Quality metrics
+    coherence_score: Optional[float]  # Does chunk make sense on its own?
+    quality_score: float  # Overall chunk quality (0-1)
+    
+    # Metadata for search
+    metadata: Dict[str, Any]  # Source document, timestamps, etc.
+    
+    # Status
+    status: str  # "created", "embedded", "stored", "error"
+    timestamp: datetime
+```
+
+**Validation Rules** (Document):
+- `filename` must be non-empty and include valid extension
+- `file_type` must be one of: "pdf", "docx", "txt", "markdown"
+- `file_size` must be > 0 and < 100MB (configurable)
+- `upload_status` must be valid state in pipeline
+- `user_id` must be non-empty
+
+**Validation Rules** (DocumentChunk):
+- `text` must be non-empty and <= 512 tokens (approx 2000 characters)
+- `chunk_number` must be >= 0
+- `token_count` must match actual token count
+- `embedding` must be 768-dimensional (if provided)
+- `quality_score` must be 0-1
+- All timestamps must be valid and not in future
+
+**Relationships**:
+- One Document has many ParsedDocuments (1:N) - typically 1 but allows reprocessing
+- One ParsedDocument has many DocumentChunks (1:N)
+- DocumentChunks stored in Milvus collection via milvus_id
+
+**Document Upload Workflow**:
+```
+Document (uploaded) 
+  → file_type validation
+  → upload_status: "pending"
+  → TensorLake API call
+  → ParsedDocument created
+  → upload_status: "parsing"
+  → DocumentChunks extracted
+  → upload_status: "embedding"
+  → Gemini embeddings generated
+  → upload_status: "storing"
+  → Milvus batch insert
+  → upload_status: "complete"
+  → Document indexed and searchable
+```
+
+---
+
+### 2. Query
 
 **Purpose**: Individual piece of information retrieved from any source
 
@@ -489,7 +627,7 @@ fields:
     
   - name: "embedding"
     type: "FloatVector"
-    dimension: 1536  # OpenAI text-embedding-3-small
+    dimension: 768  # Google Gemini text-embedding-004
     
   - name: "metadata"
     type: "JSON"
@@ -499,6 +637,12 @@ fields:
     
   - name: "publish_date"
     type: "Int64"  # Timestamp
+    
+  - name: "chunk_number"
+    type: "Int32"
+    
+  - name: "quality_score"
+    type: "Float"
     
 indexes:
   - field: "embedding"
@@ -510,6 +654,9 @@ indexes:
     index_type: "HASH"
     
   - field: "publish_date"
+    index_type: "SORT"
+    
+  - field: "quality_score"
     index_type: "SORT"
 ```
 
