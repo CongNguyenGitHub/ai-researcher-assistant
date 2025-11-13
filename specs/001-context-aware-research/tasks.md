@@ -45,9 +45,9 @@ This delivers end-to-end query processing with parallel multi-source retrieval, 
 
 - [ ] T001 Create project structure per plan.md layout (Python 3.10+): Create directories `src/`, `src/pages/`, `src/models/`, `src/services/`, `src/tools/`, `src/ui/`, `src/utils/`
 
-- [ ] T002 Create `requirements.txt` with core dependencies: crewai==0.35.0, streamlit==1.28.0, pymilvus==2.3.0, firecrawl-python==0.2.0, arxiv==2.1.0, zep-python==0.40.0, python-dotenv==1.0.0, pydantic==2.0.0, requests==2.31.0
+- [ ] T002 Create `requirements.txt` with core dependencies: crewai==0.35.0, google-generativeai==0.3.0, streamlit==1.28.0, pymilvus==2.3.0, firecrawl-python==0.2.0, arxiv==2.1.0, zep-python==0.40.0, python-dotenv==1.0.0, pydantic==2.0.0, requests==2.31.0
 
-- [ ] T003 Create `.env.example` template with environment variables: `OPENAI_API_KEY`, `MILVUS_HOST`, `MILVUS_PORT`, `FIRECRAWL_API_KEY`, `ZEP_API_URL`, `ZEP_API_KEY`
+- [ ] T003 Create `.env.example` template with environment variables: `GEMINI_API_KEY`, `GEMINI_MODEL`, `MILVUS_HOST`, `MILVUS_PORT`, `FIRECRAWL_API_KEY`, `ZEP_API_URL`, `ZEP_API_KEY`
 
 - [ ] T004 Create `pyproject.toml` with project metadata: name="context-aware-research-assistant", version="0.1.0", description, Python>=3.10 requirement, dependencies pointing to requirements.txt
 
@@ -67,7 +67,7 @@ This delivers end-to-end query processing with parallel multi-source retrieval, 
 
 ### Configuration & Logging
 
-- [ ] T007 Create `src/config.py`: Load environment variables, validate required settings (OpenAI, Milvus, Firecrawl, Arxiv, Zep), raise ConfigError if missing, expose as Config dataclass
+- [ ] T007 Create `src/config.py`: Load environment variables, validate required settings (Gemini, Milvus, Firecrawl, Arxiv, Zep), raise ConfigError if missing, expose as Config dataclass
 
 - [ ] T008 Create `src/logging_config.py`: Set up structured logging with JSON formatter, log levels (DEBUG/INFO/WARNING/ERROR), file rotation (daily, 10MB), include timestamps and context IDs
 
@@ -229,7 +229,7 @@ This delivers end-to-end query processing with parallel multi-source retrieval, 
 
 ### US4 - Response Generation
 
-- [ ] [P] T054 [US4] Implement Synthesizer.generate_response() in `src/services/synthesizer.py`: Receive FilteredContext + Query, use LLM (OpenAI) to generate comprehensive answer addressing query, ensure response uses only filtered context (no hallucination), return structured response
+- [ ] [P] T054 [US4] Implement Synthesizer.generate_response() in `src/services/synthesizer.py`: Receive FilteredContext + Query, use LLM (Google Gemini 2.0 Flash) to generate comprehensive answer addressing query, ensure response uses only filtered context (no hallucination), return structured response
 
 - [ ] [P] T055 [US4] Implement 3-level citation structure in `src/services/synthesizer.py`:
   - Level 1: Main answer text with source_links list (URLs from context chunks)
@@ -250,7 +250,7 @@ This delivers end-to-end query processing with parallel multi-source retrieval, 
 
 ### US4 - Synthesizer Agent Integration
 
-- [ ] T061 [US4] Implement SynthesizeResponseTask in crewAI: Task receives FilteredContext, executes Synthesizer LLM prompt (few-shot examples of 3-level citations), validates response structure, returns FinalResponse
+- [ ] T061 [US4] Implement SynthesizeResponseTask in crewAI: Task receives FilteredContext, executes Synthesizer LLM prompt using Gemini 2.0 Flash (few-shot examples of 3-level citations), validates response structure, returns FinalResponse
 
 - [ ] T062 [US4] Integrate into Orchestrator workflow: After Evaluator filtering, execute SynthesizeResponseTask, catch synthesis exceptions (timeout, LLM error), apply fallback (return response with available context even if synthesis partial)
 

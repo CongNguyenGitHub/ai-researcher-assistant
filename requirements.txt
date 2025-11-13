@@ -1,0 +1,40 @@
+# Core Framework
+crewai==0.35.0
+crewai-tools==0.1.0
+
+# LLM Provider - Using Google Gemini instead of OpenAI
+google-generativeai==0.3.0
+
+# Web Search
+firecrawl-python==0.2.0
+
+# Academic Search
+arxiv==2.1.0
+
+# Memory & Conversation Management
+zep-python==0.40.0
+
+# Vector Database for RAG
+pymilvus==2.3.0
+
+# Web Framework
+streamlit==1.28.0
+
+# Configuration & Environment
+python-dotenv==1.0.0
+
+# Data Models & Validation
+pydantic==2.0.0
+
+# HTTP Requests
+requests==2.31.0
+
+# Logging & Monitoring
+python-json-logger==2.0.7
+
+# Data Processing
+pandas==2.0.0
+numpy==1.24.0
+
+# Utilities
+typing-extensions==4.8.0

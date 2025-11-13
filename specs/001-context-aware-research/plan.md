@@ -12,7 +12,8 @@ The Context-Aware Research Assistant is a crewAI-orchestrated system that accept
 ## Technical Context
 
 **Language/Version**: Python 3.10+  
-**Primary Dependencies**: crewai, crewai-tools, python-dotenv, pymilvus, firecrawl-python, arxiv, zep-python, streamlit  
+**Primary Dependencies**: crewai, crewai-tools, google-generativeai, python-dotenv, pymilvus, firecrawl-python, arxiv, zep-python, streamlit  
+**LLM Provider**: Google Gemini 2.0 Flash (replaces OpenAI GPT)  
 **Storage**: Milvus (vector database for RAG), Zep Memory (conversation/entity storage), external (Firecrawl/Arxiv APIs)  
 **Testing**: MVP mode - no automated tests, manual testing only  
 **Target Platform**: Linux/Mac/Windows web application (Streamlit), deployable as standalone web service  
