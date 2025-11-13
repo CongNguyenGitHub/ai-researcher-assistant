@@ -7,19 +7,19 @@
 
 ## Summary
 
-The Context-Aware Research Assistant is a crewAI-orchestrated system that accepts user research queries and synthesizes comprehensive answers by gathering context in parallel from four distinct sources: an internal knowledge base (Milvus vector database with RAG), real-time web search (Firecrawl), academic literature (Arxiv API), and user-specific conversation history (Zep Memory). An Evaluator agent filters aggregated context to remove low-quality information, and a Synthesizer agent produces the final structured response. The system updates memory for future interactions, maintaining conversation continuity and user preferences. Built in Python with crewAI orchestration, deployed as a command-line tool with REST API capabilities.
+The Context-Aware Research Assistant is a crewAI-orchestrated system that accepts user research queries and synthesizes comprehensive answers by gathering context in parallel from four distinct sources: an internal knowledge base (Milvus vector database with RAG), real-time web search (Firecrawl), academic literature (Arxiv API), and user-specific conversation history (Zep Memory). An Evaluator agent filters aggregated context to remove low-quality information, and a Synthesizer agent produces the final structured response. The system updates memory for future interactions, maintaining conversation continuity and user preferences. Built in Python with crewAI orchestration, deployed as a Streamlit web application for interactive research sessions.
 
 ## Technical Context
 
 **Language/Version**: Python 3.10+  
-**Primary Dependencies**: crewai, crewai-tools, python-dotenv, pymilvus, firecrawl-python, arxiv, zep-python  
+**Primary Dependencies**: crewai, crewai-tools, python-dotenv, pymilvus, firecrawl-python, arxiv, zep-python, streamlit  
 **Storage**: Milvus (vector database for RAG), Zep Memory (conversation/entity storage), external (Firecrawl/Arxiv APIs)  
-**Testing**: pytest for unit tests, integration tests for agent workflows  
-**Target Platform**: Linux/Mac/Windows server, CLI-based with extensible REST API  
-**Project Type**: Single Python project (backend orchestration service)  
+**Testing**: MVP mode - no automated tests, manual testing only  
+**Target Platform**: Linux/Mac/Windows web application (Streamlit), deployable as standalone web service  
+**Project Type**: Single Python project (Streamlit web application with backend orchestration)  
 **Performance Goals**: <30 second response time per query, parallel execution across 4 sources  
 **Constraints**: <30 second total latency, graceful degradation if any single source fails, maintain context coherence across multi-turn conversations  
-**Scale/Scope**: MVP supports single-user/multi-turn conversations, designed for future scaling to multi-user with request queueing
+**Scale/Scope**: MVP supports single-user/multi-turn conversations via web UI, designed for future scaling to multi-user with session management
 
 ## Constitution Check
 
@@ -58,7 +58,11 @@ specs/001-context-aware-research/
 
 ```text
 src/
-├── main.py              # Main orchestration entry point
+├── app.py               # Streamlit main application entry point
+├── pages/
+│   ├── research.py      # Main research query interface
+│   ├── conversation.py  # Multi-turn conversation history
+│   └── entities.py      # Entity browser and knowledge graph
 ├── agents.py            # Evaluator and Synthesizer agent definitions
 ├── tasks.py             # Agent task definitions
 ├── models/
@@ -75,6 +79,10 @@ src/
 │   ├── firecrawl_tool.py # Firecrawl web search integration
 │   ├── arxiv_tool.py    # Arxiv academic search integration
 │   └── memory_tool.py   # Zep memory interactions
+├── ui/
+│   ├── __init__.py
+│   ├── components.py    # Reusable Streamlit components
+│   └── styles.py        # UI styling and themes
 ├── config.py            # Configuration and environment setup
 ├── logging_config.py    # Structured logging configuration
 └── utils/
@@ -82,37 +90,19 @@ src/
     ├── validators.py    # Data validation utilities
     └── formatters.py    # Response formatting utilities
 
-tests/
-├── unit/
-│   ├── test_agents.py
-│   ├── test_tasks.py
-│   ├── test_models.py
-│   └── test_tools/
-│       ├── test_rag_tool.py
-│       ├── test_firecrawl_tool.py
-│       ├── test_arxiv_tool.py
-│       └── test_memory_tool.py
-├── integration/
-│   ├── test_orchestration.py
-│   ├── test_context_flow.py
-│   └── test_memory_integration.py
-└── contract/
-    ├── test_tool_contracts.py
-    └── test_agent_contracts.py
-
 .env.example            # Example environment configuration
-requirements.txt        # Python dependencies
+requirements.txt        # Python dependencies (includes streamlit)
 pyproject.toml         # Project metadata and configuration
+streamlit_config.toml  # Streamlit configuration
 ```
 
-**Structure Decision**: Single Python project with layered architecture (models → tools → services → agents → orchestration). The modular design allows:
-- Independent testing of each tool and agent
+**Structure Decision**: Single Python project with Streamlit web UI and layered backend (models → tools → services → agents → orchestration). The modular design allows:
+- Independent testing of each tool and agent (manual testing for MVP)
 - Easy addition of new context sources (new tools)
-- Clear separation of concerns (models, services, agents)
-- Extensible to REST API without core changes
-- Supports both CLI and programmatic usage
-
-This aligns with the crewAI framework patterns and your proposed file structure while adding proper organization for models, services, and comprehensive testing layers.
+- Clear separation of concerns (UI, models, services, agents)
+- Streamlit pages for different features (research, conversation, entities)
+- Extensible to multi-page application without core changes
+- Supports both Streamlit web interface and programmatic usage
 
 
 ## Phase 0: Research & Unknowns Resolution
@@ -147,7 +137,11 @@ Phase 0 will resolve the following research areas identified from the specificat
 
 7. **Error Resilience and Graceful Degradation**
    - Task: Patterns for handling individual source failures, fallback strategies
-   - Deliverable: research.md section on resilience patterns and testing strategies
+   - Deliverable: research.md section on resilience patterns
+
+8. **Streamlit UI Best Practices for Research Assistant**
+   - Task: Research Streamlit patterns for multi-page apps, session state management, streaming responses
+   - Deliverable: research.md section on Streamlit component patterns and caching strategies
 
 **Output**: `research.md` file with all NEEDS CLARIFICATION items resolved and decision rationales documented.
 
@@ -233,6 +227,8 @@ Create developer quickstart including:
 4. **Structured Responses**: JSON-based with confidence scores and source citations for reliability
 5. **Graceful Degradation**: System continues with available sources if any single source fails
 6. **Memory Integration**: Zep handles both conversation history and entity relationship tracking
+7. **Streamlit Web UI**: Interactive multi-page web application for user queries and conversation history
+8. **MVP Focus**: No automated testing framework, manual testing only to accelerate MVP delivery
 
 ## Next Steps
 

@@ -8,13 +8,14 @@
 
 ## Project Overview
 
-The Context-Aware Research Assistant is a Python-based system that answers user research queries by orchestrating parallel retrieval from multiple sources (internal documents, web, academic papers, and memory) using crewAI agents.
+The Context-Aware Research Assistant is a Streamlit web application that answers user research queries by orchestrating parallel retrieval from multiple sources (internal documents, web, academic papers, and memory) using crewAI agents.
 
 **Architecture**: 
+- **UI**: Streamlit multi-page web application
 - **Orchestration**: crewAI agents (Retriever, Evaluator, Synthesizer, Memory)
 - **Storage**: Milvus (vector DB), Zep (conversation memory)
 - **Language**: Python 3.10+
-- **Deployment**: CLI tool with extensible REST API
+- **Deployment**: Standalone web service (deployable on local machine or cloud)
 
 ---
 
@@ -33,6 +34,45 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
+```
+
+### Dependencies
+
+The `requirements.txt` includes:
+
+```
+# Core Framework
+crewai==0.31.0
+crewai-tools==0.1.0
+
+# Streamlit Web UI
+streamlit==1.28.0
+
+# Vector Database
+pymilvus==2.3.0
+
+# Data Source APIs
+firecrawl-python==0.0.1
+arxiv==2.1.0
+
+# Memory Service
+zep-python==0.36.0
+
+# LLM & Embeddings
+openai==1.3.0
+
+# Configuration & Environment
+python-dotenv==1.0.0
+
+# Data & Serialization
+pydantic==2.0.0
+
+# Async Support
+aiohttp==3.9.0
+asyncio-contextmanager==1.0.0
+
+# Utilities
+requests==2.31.0
 ```
 
 ### 2. Environment Configuration
@@ -120,109 +160,109 @@ python scripts/init_zep.py
 
 ## Running the Assistant
 
-### Basic Query
+### Start Streamlit Web App
 
 ```bash
-# Single query
-python -m src.main --query "What are the benefits of Python?"
+# Launch the Streamlit application (opens in browser)
+streamlit run src/app.py
 
-# Output:
-# {
-#   "answer": "...",
-#   "confidence": 0.92,
-#   "sources": [...],
-#   "session_id": "..."
-# }
+# The app will be available at: http://localhost:8501
 ```
 
-### Interactive Mode (Conversation)
+### Using the Web Interface
 
-```bash
-python -m src.main --interactive
+**Main Research Page** (`/research`):
+1. Enter your research query in the text input
+2. Click "Search" or press Enter
+3. Watch as the system retrieves from 4 sources in parallel
+4. View the synthesized answer with:
+   - Main answer text
+   - Confidence score
+   - Source citations
+   - Breakdown by source
 
-# Then type queries:
-# > What is machine learning?
-# < [Response with sources...]
-# > Tell me more about neural networks
-# < [Multi-turn response, maintaining context...]
-# > exit
-```
+**Conversation History** (`/conversation`):
+1. Browse all previous queries and responses
+2. Click on a prior query to view full context
+3. Continue conversations from previous points
+4. Manage conversation sessions
 
-### With Configuration Options
+**Entity Browser** (`/entities`):
+1. View all extracted entities from conversations
+2. See entity relationships and knowledge graph
+3. Track topic mentions across interactions
+4. Search for specific entities or relationships
 
-```bash
-# Response format: concise, detailed, technical
-python -m src.main \
-  --query "latest AI research" \
-  --format detailed \
-  --preferred-sources arxiv,rag \
-  --information-depth comprehensive
 
-# Exclude specific sources
-python -m src.main \
-  --query "Python tutorial" \
-  --exclude-sources web \
-  --quality-threshold 0.7
+### Streamlit Configuration
+
+You can customize the app behavior via `streamlit_config.toml`:
+
+```toml
+[client]
+showErrorDetails = true
+
+[logger]
+level = "info"
+
+[theme]
+primaryColor = "#0066ff"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f0f2f6"
+
+[server]
+maxUploadSize = 200
+enableXsrfProtection = true
 ```
 
 ---
 
-## Testing
+## Development Workflow (MVP - Manual Testing)
 
-### Unit Tests (Individual Components)
+### Testing Features Locally
 
+**Manual Query Testing**:
+1. Open Streamlit app: `streamlit run src/app.py`
+2. Submit various research queries
+3. Verify responses include:
+   - Main answer text
+   - Confidence score (0-1)
+   - Source citations with URLs
+   - Retrieval time under 30 seconds
+
+**Testing Multi-turn Conversations**:
+1. Submit initial query
+2. Verify response appears in Conversation History page
+3. Submit follow-up query related to first
+4. Verify context from previous query is incorporated
+5. Check that Zep memory correctly retrieved prior context
+
+**Testing Entity Tracking**:
+1. Submit queries that mention specific people/organizations/concepts
+2. Visit Entity Browser page
+3. Verify entities were extracted and stored
+4. Check entity relationships are tracked
+5. Verify subsequent queries reference related entities
+
+**Testing Source Preferences**:
+1. Go back to Conversation History
+2. For any past query, adjust source preferences
+3. Re-run query (simulated by new similar query)
+4. Verify different sources are prioritized
+
+### Debugging
+
+Check logs for errors:
 ```bash
-# Test data models
-pytest tests/unit/test_models.py -v
+# Streamlit logs appear in terminal running the app
+# Look for:
+# - Tool timeouts (if source takes >7s)
+# - Milvus connection errors
+# - Zep memory errors
+# - Agent response issues
 
-# Test tools
-pytest tests/unit/test_tools/test_rag_tool.py -v
-pytest tests/unit/test_tools/test_firecrawl_tool.py -v
-pytest tests/unit/test_tools/test_arxiv_tool.py -v
-pytest tests/unit/test_tools/test_memory_tool.py -v
-
-# Test agents
-pytest tests/unit/test_agents.py -v
-
-# Run all unit tests
-pytest tests/unit/ -v
-```
-
-### Integration Tests (Complete Workflows)
-
-```bash
-# Test end-to-end query processing
-pytest tests/integration/test_orchestration.py -v
-
-# Test context flow through pipeline
-pytest tests/integration/test_context_flow.py -v
-
-# Test memory persistence
-pytest tests/integration/test_memory_integration.py -v
-
-# Run all integration tests
-pytest tests/integration/ -v
-```
-
-### Contract Tests (Tool Interfaces)
-
-```bash
-# Verify tools implement contracts correctly
-pytest tests/contract/test_tool_contracts.py -v
-
-# Verify agent communication contracts
-pytest tests/contract/test_agent_contracts.py -v
-```
-
-### Coverage Report
-
-```bash
-# Generate coverage report
-pytest --cov=src --cov-report=html
-
-# View report
-open htmlcov/index.html  # On macOS: open
-# On Windows: start htmlcov/index.html
+# Add debug logging temporarily:
+# In src/config.py, set LOG_LEVEL = "DEBUG"
 ```
 
 ---
@@ -233,7 +273,11 @@ open htmlcov/index.html  # On macOS: open
 
 ```
 src/
-├── main.py              # CLI entry point
+├── app.py               # Streamlit main entry point
+├── pages/               # Streamlit multi-page app
+│   ├── research.py      # /research - main query interface
+│   ├── conversation.py  # /conversation - history browser
+│   └── entities.py      # /entities - entity graph viewer
 ├── config.py            # Configuration management
 ├── logging_config.py    # Logging setup
 │
@@ -242,6 +286,17 @@ src/
 │   ├── context.py      # ContextChunk, AggregatedContext, FilteredContext
 │   ├── response.py     # FinalResponse, ResponseSection
 │   └── memory.py       # ConversationHistory, Entity
+│
+├── pages/
+│   ├── __init__.py
+│   ├── research.py     # Main research query page
+│   ├── conversation.py # Conversation history browser
+│   └── entities.py     # Entity relationship viewer
+│
+├── ui/
+│   ├── __init__.py
+│   ├── components.py   # Reusable Streamlit components
+│   └── styles.py       # Styling and theming
 │
 ├── agents/
 │   ├── __init__.py
@@ -276,23 +331,6 @@ src/
     ├── validators.py   # Data validation
     ├── embeddings.py   # Embedding generation
     └── logger.py       # Logging utilities
-
-tests/
-├── unit/
-│   ├── test_models.py
-│   ├── test_agents.py
-│   ├── test_tasks.py
-│   └── test_tools/
-│       ├── test_rag_tool.py
-│       ├── test_firecrawl_tool.py
-│       ├── test_arxiv_tool.py
-│       └── test_memory_tool.py
-├── integration/
-│   ├── test_orchestration.py
-│   ├── test_context_flow.py
-│   └── test_memory_integration.py
-└── contract/
-    ├── test_tool_contracts.py
     └── test_agent_contracts.py
 
 specs/
