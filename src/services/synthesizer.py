@@ -67,21 +67,21 @@ class Synthesizer:
         """
         start_time = time.time()
         
-        response = FinalResponse(
-            query_id=query.id,
-            user_id=query.user_id,
-            session_id=query.session_id,
-        )
-        
         # Handle empty context
         if not filtered_context.chunks:
             logger.warning(f"No context available for query {query.id}")
-            response.answer = (
+            answer = (
                 f"I couldn't find relevant information to answer your query: \"{query.text}\"\n\n"
                 "Please try:\n"
                 "- Rephrasing your question\n"
                 "- Breaking it into smaller questions\n"
                 "- Providing source documents if using RAG"
+            )
+            response = FinalResponse(
+                query_id=query.id,
+                user_id=query.user_id,
+                session_id=query.session_id,
+                answer=answer,
             )
             response.response_quality.completeness = 0.0
             response.response_quality.degraded_mode = True
@@ -92,7 +92,14 @@ class Synthesizer:
         sections_data = self._organize_into_sections(query, filtered_context.chunks)
         
         # Generate answer summary
-        response.answer = self._generate_summary(query, filtered_context.chunks)
+        answer = self._generate_summary(query, filtered_context.chunks)
+        
+        response = FinalResponse(
+            query_id=query.id,
+            user_id=query.user_id,
+            session_id=query.session_id,
+            answer=answer,
+        )
         
         # Create sections with citations
         for section_idx, (title, chunks) in enumerate(sections_data):
