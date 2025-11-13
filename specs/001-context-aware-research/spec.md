@@ -5,6 +5,14 @@
 **Status**: Draft  
 **Input**: User description: "Feature: Context-Aware Research Assistant - to answer a user's query by gathering context from multiple sources, evaluating it, and synthesizing a final, comprehensive answer, orchestrated using crewAI."
 
+## Clarifications *(session 2025-11-13)*
+
+- Q1: How should the Evaluator agent define "low-quality" context? → A1: Multi-factor scoring using (30% source reputation + 20% recency + 40% semantic relevance + 10% deduplication). Balances reliability, currency, relevance, and efficiency.
+- Q2: How should contradictory information from different sources be handled? → A2: Acknowledge both perspectives with source attribution, explicitly note the contradiction, and let the user decide based on cited sources. Maintains trust and respects source contributions.
+- Q3: What should happen when all four sources return zero results? → A3: Return a transparent response explaining no context was found, invite user to refine query or provide seed documents for RAG. Prevents hallucination and guides user recovery.
+- Q4: What is the response format and citation schema? → A4: JSON with three citation levels: (1) main answer with source links, (2) key claims with specific chunk citations, (3) confidence score per claim. Enables both casual reading and deep verification.
+- Q5: How should individual source timeouts/failures be handled? → A5: Continue with remaining sources, log the failure, and note in response which sources were unavailable. Implements graceful degradation and maintains transparency.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Submit Research Query (Priority: P1)
@@ -111,14 +119,14 @@ The entire multi-step workflow—from query input through parallel context retri
 
 ### Edge Cases
 
-- What happens when no relevant context is found from any of the four sources?
-- How does the system handle contradictory information from different sources?
-- What happens if the Evaluator agent filters out all context as low-quality?
-- How does the system handle very large queries that generate excessive context?
-- What happens if Zep Memory is unavailable when trying to update conversation history?
-- How does the system handle queries that require real-time information when web search fails?
-- What happens if the user's document database (for RAG) is empty or not yet populated?
-- How does the system handle ambiguous queries with multiple valid interpretations?
+- **No context from any source**: Return transparent response explaining no context found; invite user to refine query or provide seed documents for RAG. This prevents hallucination and guides user recovery.
+- **Contradictory information across sources**: Acknowledge both perspectives with source attribution, explicitly note the contradiction, and let the user decide based on cited sources. Maintains trust and respects all source contributions.
+- **All context filtered as low-quality**: Return transparent response similar to no-context scenario, noting that quality thresholds excluded available information. Suggest adjusting query or reviewing RAG documents.
+- **Very large query generating excessive context**: Evaluator applies quality scoring and selects top N chunks (threshold TBD in design phase) to prevent token overflow in Synthesizer.
+- **Zep Memory unavailable during update**: Log the failure, continue without memory update, and note in response that conversation history was not persisted. System remains functional.
+- **Individual source timeout/failure** (e.g., Firecrawl API down): Continue with remaining sources, log failure with timestamp and source name, and include source availability status in response. Implements graceful degradation.
+- **RAG database empty or not yet populated**: Proceed with remaining sources (web, academic, memory); note in response that no internal documents were available.
+- **Ambiguous queries with multiple interpretations**: Return response addressing most common interpretation and suggest specific follow-up queries for alternative interpretations.
 
 ## Requirements *(mandatory)*
 
@@ -132,14 +140,15 @@ The entire multi-step workflow—from query input through parallel context retri
 - **FR-006**: System MUST retrieve conversation history, user preferences, and entity relationships from Zep Memory
 - **FR-007**: System MUST execute all four context retrieval sources in parallel
 - **FR-008**: System MUST aggregate context from all four sources before evaluation
-- **FR-009**: System MUST provide an Evaluator agent that analyzes aggregated context and filters out irrelevant, redundant, or low-quality information
-- **FR-010**: System MUST provide a Synthesizer agent that generates comprehensive answers using only filtered context
-- **FR-011**: System MUST produce final responses in a structured format that addresses the original query
+- **FR-009**: System MUST provide an Evaluator agent that analyzes aggregated context and filters out irrelevant, redundant, or low-quality information using multi-factor quality scoring (30% source reputation + 20% recency + 40% semantic relevance + 10% deduplication)
+- **FR-010**: System MUST provide a Synthesizer agent that generates comprehensive answers using only filtered context, with explicit handling of contradictory information: acknowledge both perspectives with source attribution, note the contradiction, and let user decide
+- **FR-011**: System MUST produce final responses in structured JSON format with three citation levels: (1) main answer with source links, (2) key claims with specific chunk citations, (3) confidence score per claim
 - **FR-012**: System MUST update Zep Memory with the final response and relevant context for future interactions
 - **FR-013**: System MUST track entities and relationships mentioned in responses for enhanced memory
 - **FR-014**: System MUST document all assumptions made during context evaluation and synthesis
 - **FR-015**: System MUST support document parsing and embedding for populating the RAG database
-- **FR-016**: System MUST handle errors gracefully when individual sources fail or return no results
+- **FR-016**: System MUST handle errors gracefully when individual sources fail: continue with remaining sources, log failures, and include source availability status in response
+- **FR-017**: System MUST handle the no-context scenario by returning a transparent response explaining no context was found and inviting user to refine query or provide seed documents for RAG
 
 ### Key Entities *(include if feature involves data)*
 
@@ -147,7 +156,7 @@ The entire multi-step workflow—from query input through parallel context retri
 - **Context Chunk**: A discrete piece of information from any source (document, web page, academic paper, or memory). Contains source type, text content, confidence score, and relevance metadata.
 - **Aggregated Context**: Collection of all context chunks retrieved from RAG, web search, academic search, and memory sources. Maintains source attribution and retrieval metadata.
 - **Filtered Context**: High-quality subset of aggregated context after evaluation. Removes low-confidence, irrelevant, or redundant information.
-- **Final Response**: Structured answer synthesized from filtered context. Contains the main answer, source citations, confidence level, and relevant supporting information.
+- **Final Response**: Structured JSON answer synthesized from filtered context. Contains: (1) main answer text with source links, (2) key claims as array with specific chunk citations and per-claim confidence scores (0.0-1.0), (3) overall response confidence, (4) source availability status (which sources contributed, which failed/timed out), (5) metadata including synthesis timestamp and source count. When contradictions exist, explicitly documents conflicting claims with both sources cited.
 - **Conversation History**: Record of prior user queries, system responses, and extracted insights. Supports multi-turn interactions and context continuity.
 - **User Preferences**: Stored user settings such as response format preferences, preferred sources, information depth, and topic interests.
 - **Entity**: Named concepts (people, organizations, topics, etc.) mentioned across interactions. Tracked with relationships to build a user-specific knowledge graph.
@@ -200,8 +209,10 @@ The entire multi-step workflow—from query input through parallel context retri
 - **In Scope**: Query input, multi-source retrieval, evaluation, synthesis, memory updates, workflow orchestration
 - **Out of Scope**: User authentication/authorization, UI/UX design, deployment infrastructure, cost optimization, multi-language support (MVP single language)
 
-## Open Questions
+## Resolved Questions (via Session 2025-11-13 Clarifications)
 
-1. What is the definition of "low-quality" context that the Evaluator should filter? Should this be based on source reputation, document recency, statistical confidence from semantic search, or other factors?
-2. How should contradictory information from different sources be handled—should the Synthesizer agent present both viewpoints, choose one source, or synthesize a balanced perspective?
-3. What is the acceptable fallback behavior when all context sources return no results?
+1. ~~What is the definition of "low-quality" context that the Evaluator should filter?~~ **RESOLVED**: Multi-factor scoring (30% source reputation + 20% recency + 40% semantic relevance + 10% deduplication).
+2. ~~How should contradictory information from different sources be handled?~~ **RESOLVED**: Acknowledge both perspectives with source attribution, explicitly note the contradiction, let user decide.
+3. ~~What is the acceptable fallback behavior when all context sources return no results?~~ **RESOLVED**: Return transparent response explaining no context found; invite user to refine query or provide seed documents.
+4. ~~What is the response format and citation schema?~~ **RESOLVED**: JSON with three citation levels (main answer + source links, key claims + chunk citations, per-claim confidence scores).
+5. ~~How should individual source timeouts/failures be handled?~~ **RESOLVED**: Continue with remaining sources, log failure, note source availability in response.
