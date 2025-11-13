@@ -1,0 +1,32 @@
+[theme]
+primaryColor = "#1f77b4"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f0f2f6"
+textColor = "#262730"
+font = "sans serif"
+
+[client]
+# Maximum file upload size in MB
+maxUploadSize = 200
+# Show scrollbar on output area
+showErrorDetails = true
+toolbarMode = "minimal"
+
+[logger]
+# Logging level: debug, info, warning, error, critical
+level = "info"
+# Message format
+messageFormat = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+[server]
+# Port and host
+port = 8501
+headless = true
+runOnSave = true
+# Timeout for script run (seconds)
+scriptRunContext.timeout = 3600
+
+[browser]
+# Browser window configuration
+gatherUsageStats = false
+serverAddress = "localhost"

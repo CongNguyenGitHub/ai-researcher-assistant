@@ -4,7 +4,14 @@ A crewAI-orchestrated system that synthesizes comprehensive research answers
 from multiple parallel sources (RAG, web search, academic papers, conversation memory)
 """
 
-from src.config import Config, get_config, init_config, ConfigError
+from .config import Config, get_config, init_config, ConfigError
+from .data_ingestion import (
+    TensorLakeDocumentParser,
+    ParsedDocument,
+    GeminiEmbedder,
+    MilvusLoader,
+    DataIngestionPipeline,
+)
 
 __version__ = "0.1.0-mvp"
 __author__ = "AI Research Assistant Team"
@@ -15,4 +22,9 @@ __all__ = [
     "get_config",
     "init_config",
     "ConfigError",
+    "TensorLakeDocumentParser",
+    "ParsedDocument",
+    "GeminiEmbedder",
+    "MilvusLoader",
+    "DataIngestionPipeline",
 ]
