@@ -39,6 +39,10 @@ from .tools import (
     ToolBase,
     ToolResult,
     ToolStatus,
+    RAGTool,
+    FirecrawlTool,
+    ArxivTool,
+    MemoryTool,
 )
 from .utils import (
     ValidationError,
@@ -88,6 +92,10 @@ __all__ = [
     "ToolBase",
     "ToolResult",
     "ToolStatus",
+    "RAGTool",
+    "FirecrawlTool",
+    "ArxivTool",
+    "MemoryTool",
     # Utils
     "ValidationError",
     "validate_query",
