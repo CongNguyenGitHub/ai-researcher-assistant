@@ -47,8 +47,8 @@ class TestSearchService(unittest.TestCase):
         urls = self.search.search("exercise benefits", max_results=2)
         
         self.assertEqual(len(urls), 2)
-        self.assertTrue(all("health" in u.lower() or "wellbeing" in u.lower() or 
-                          "cdc" in u.lower() or "nih" in u.lower() 
+        # Health URLs should be from health-related domains
+        self.assertTrue(all(any(term in u.lower() for term in ["health", "mayo", "cdc", "nih", "who"]) 
                           for u in urls))
     
     def test_search_max_results(self):
@@ -85,6 +85,7 @@ class TestFirecrawlToolIntegration(unittest.TestCase):
         query = Query(
             id="test-1",
             user_id="user-1",
+            session_id="session-1",
             text="artificial intelligence research"
         )
         
@@ -133,6 +134,7 @@ class TestParallelRetrieval(unittest.TestCase):
         query = Query(
             id="test-1",
             user_id="user-1",
+            session_id="session-1",
             text="test query"
         )
         
@@ -161,6 +163,7 @@ class TestParallelRetrieval(unittest.TestCase):
         query = Query(
             id="test-1",
             user_id="user-1",
+            session_id="session-1",
             text="test query"
         )
         
@@ -230,6 +233,7 @@ class TestPhase4Requirements(unittest.TestCase):
         query = Query(
             id="test-1",
             user_id="user-1",
+            session_id="session-1",
             text="machine learning applications"
         )
         

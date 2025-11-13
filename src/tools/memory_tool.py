@@ -10,7 +10,7 @@ import time
 
 from models.query import Query
 from models.context import ContextChunk, SourceType
-from models.memory import ConversationMemory
+from models.memory import ConversationHistory
 from tools.base import ToolBase, ToolResult, ToolStatus
 from logging_config import get_logger
 
